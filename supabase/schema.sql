@@ -11,6 +11,12 @@ create extension if not exists "pgcrypto";
 -- selected Page, and generation preferences. Single-user app, so one row.
 create table if not exists app_settings (
   id smallint primary key default 1,
+  -- Editable profile for the single administrator. The email and password
+  -- environment variables remain bootstrap fallbacks until these are set.
+  admin_full_name text,
+  admin_email text,
+  admin_avatar_url text,
+  admin_password_hash text,
   -- Meta app credentials. Kept here rather than in env vars so that installing
   -- this app is a paste into Settings, not a redeploy. Never leaves the server.
   facebook_app_id text,
@@ -117,3 +123,7 @@ alter table app_settings add column if not exists facebook_app_id text;
 alter table app_settings add column if not exists facebook_app_secret text;
 alter table app_settings add column if not exists facebook_config_id text;
 alter table app_settings add column if not exists topic_source text not null default 'mine';
+alter table app_settings add column if not exists admin_full_name text;
+alter table app_settings add column if not exists admin_email text;
+alter table app_settings add column if not exists admin_avatar_url text;
+alter table app_settings add column if not exists admin_password_hash text;

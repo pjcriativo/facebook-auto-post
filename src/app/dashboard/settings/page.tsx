@@ -12,6 +12,9 @@ import {
   Key,
   Copy,
   Check,
+  Camera,
+  UserCircle,
+  LockKey,
 } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +37,9 @@ const TIMEZONES = [
 ];
 
 interface SettingsState {
+  admin_full_name?: string | null;
+  admin_email?: string | null;
+  admin_avatar_url?: string | null;
   facebook_connected: boolean;
   /** False when the deployment has no real Meta app credentials. */
   facebook_configured?: boolean;
@@ -68,6 +74,19 @@ function SettingsForm() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [fullName, setFullName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [configId, setConfigId] = useState("");
@@ -93,6 +112,8 @@ function SettingsForm() {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "Não foi possível carregar as configurações.");
         setSettings(data);
+        setFullName(data.admin_full_name ?? "");
+        setProfileEmail(data.admin_email ?? "");
         setAppId(data.facebook_app_id ?? "");
         setConfigId(data.facebook_config_id ?? "");
       })
@@ -142,6 +163,80 @@ function SettingsForm() {
       setCredsError(err instanceof Error ? err.message : "Não foi possível salvar essas credenciais.");
     } finally {
       setSavingCreds(false);
+    }
+  }
+
+  async function saveProfile() {
+    setProfileError(null);
+    setProfileMessage(null);
+    setProfileSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email: profileEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar o perfil.");
+      setSettings((s) =>
+        s
+          ? { ...s, admin_full_name: data.fullName, admin_email: data.email }
+          : s
+      );
+      setFullName(data.fullName ?? "");
+      setProfileEmail(data.email ?? "");
+      setProfileMessage("Perfil atualizado.");
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Não foi possível salvar o perfil.");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function uploadAvatar(file: File | undefined) {
+    if (!file) return;
+    setProfileError(null);
+    setProfileMessage(null);
+    setAvatarUploading(true);
+    try {
+      const form = new FormData();
+      form.set("avatar", file);
+      const res = await fetch("/api/profile/avatar", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível enviar a foto.");
+      setSettings((s) => (s ? { ...s, admin_avatar_url: data.avatarUrl } : s));
+      setProfileMessage("Foto atualizada.");
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Não foi possível enviar a foto.");
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
+  async function changePassword() {
+    setPasswordError(null);
+    setPasswordMessage(null);
+    if (newPassword !== confirmPassword) {
+      setPasswordError("A confirmação não corresponde à nova senha.");
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      const res = await fetch("/api/profile/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível alterar a senha.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage("Senha alterada com sucesso.");
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : "Não foi possível alterar a senha.");
+    } finally {
+      setPasswordSaving(false);
     }
   }
 
@@ -213,6 +308,141 @@ function SettingsForm() {
           <WarningCircle size={18} /> {oauthMessage ?? "Não foi possível conectar o Facebook."}
         </div>
       )}
+
+      {/* Administrator profile */}
+      <Card>
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <UserCircle size={23} weight="fill" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-heading font-bold text-foreground">Perfil do usuário</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Dados da conta administrativa que acessa este painel.
+            </p>
+
+            <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div
+                className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 bg-cover bg-center text-2xl font-bold text-muted-foreground"
+                style={settings.admin_avatar_url ? { backgroundImage: `url(${settings.admin_avatar_url})` } : undefined}
+                role="img"
+                aria-label="Foto do perfil"
+              >
+                {!settings.admin_avatar_url && (fullName.trim().charAt(0).toUpperCase() || <UserCircle size={42} />)}
+              </div>
+              <div>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-foreground transition hover:bg-surface-2">
+                  <Camera size={16} />
+                  {avatarUploading ? "Enviando…" : "Alterar foto"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    disabled={avatarUploading}
+                    onChange={(e) => {
+                      void uploadAvatar(e.target.files?.[0]);
+                      e.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <p className="mt-1.5 text-xs text-muted-foreground">JPG, PNG ou WebP de até 5 MB.</p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label htmlFor="profile-name" className="text-xs font-semibold text-muted-foreground">
+                  Nome completo
+                </label>
+                <input
+                  id="profile-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  autoComplete="name"
+                  placeholder="Seu nome completo"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <div>
+                <label htmlFor="profile-email" className="text-xs font-semibold text-muted-foreground">
+                  E-mail administrativo
+                </label>
+                <input
+                  id="profile-email"
+                  type="email"
+                  value={profileEmail}
+                  onChange={(e) => setProfileEmail(e.target.value)}
+                  autoComplete="email"
+                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Somente o administrador autenticado pode alterar este e-mail.
+                </p>
+              </div>
+            </div>
+
+            {profileError && <p className="mt-3 text-xs text-destructive">{profileError}</p>}
+            {profileMessage && <p className="mt-3 text-xs font-medium text-success">{profileMessage}</p>}
+            <Button className="mt-4" size="sm" onClick={saveProfile} disabled={profileSaving || avatarUploading}>
+              {profileSaving ? "Salvando…" : "Salvar perfil"}
+            </Button>
+
+            <div className="mt-6 border-t border-border pt-5">
+              <div className="flex items-center gap-2">
+                <LockKey size={18} className="text-muted-foreground" />
+                <h3 className="font-heading text-sm font-bold text-foreground">Alterar senha</h3>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="current-password" className="text-xs font-semibold text-muted-foreground">Senha atual</label>
+                  <input
+                    id="current-password"
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="new-password" className="text-xs font-semibold text-muted-foreground">Nova senha</label>
+                  <input
+                    id="new-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="confirm-password" className="text-xs font-semibold text-muted-foreground">Confirmar nova senha</label>
+                  <input
+                    id="confirm-password"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Use pelo menos 8 caracteres, com letras e números.</p>
+              {passwordError && <p className="mt-2 text-xs text-destructive">{passwordError}</p>}
+              {passwordMessage && <p className="mt-2 text-xs font-medium text-success">{passwordMessage}</p>}
+              <Button
+                className="mt-3"
+                size="sm"
+                variant="secondary"
+                onClick={changePassword}
+                disabled={passwordSaving || !currentPassword || !newPassword || !confirmPassword}
+              >
+                <LockKey size={15} /> {passwordSaving ? "Alterando…" : "Alterar senha"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* Facebook connection */}
       <Card>

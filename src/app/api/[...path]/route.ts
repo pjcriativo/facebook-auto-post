@@ -7,6 +7,11 @@ import {
   sessionCookieOptions,
   verifySessionToken,
 } from "@/lib/auth/session";
+import {
+  hashAdminPassword,
+  verifyAdminLogin,
+  verifyCurrentAdminPassword,
+} from "@/lib/auth/credentials";
 import { generateContent } from "@/lib/ai/text";
 import { generateImage } from "@/lib/ai/image";
 import { getTrendingTopics } from "@/lib/trends";
@@ -124,9 +129,17 @@ async function safely(handler: () => Promise<Response>): Promise<Response> {
 
 /** Tokens must never reach the browser, so they are stripped in one place. */
 async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>) {
-  const { facebook_user_token, default_page_token, facebook_app_secret, ...safe } = settings;
+  const {
+    facebook_user_token,
+    default_page_token,
+    facebook_app_secret,
+    admin_password_hash,
+    ...safe
+  } = settings;
+  void admin_password_hash;
   return {
     ...safe,
+    admin_email: settings.admin_email?.trim().toLowerCase() || env.adminEmail,
     // The App ID is public (it travels in the OAuth URL); the secret never
     // leaves the server, so the UI only learns whether one is stored.
     facebook_app_secret_set: Boolean(facebook_app_secret),
@@ -262,6 +275,16 @@ const CredentialsBody = z.object({
   configId: z.string().trim().max(64).optional(),
 });
 
+const PasswordBody = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z
+    .string()
+    .min(8)
+    .max(128)
+    .regex(/[A-Za-z]/)
+    .regex(/[0-9]/),
+});
+
 export async function POST(req: Request, ctx: Ctx) {
   const { path } = await ctx.params;
   const route = path.join("/");
@@ -273,11 +296,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (route === "auth/login") {
       const parsed = LoginBody.safeParse(await req.json().catch(() => null));
-      if (
-        !parsed.success ||
-        parsed.data.email !== env.adminEmail ||
-        parsed.data.password !== env.adminPassword
-      ) {
+      if (!parsed.success || !(await verifyAdminLogin(parsed.data.email, parsed.data.password))) {
         return json({ error: "E-mail ou senha incorretos." }, 401);
       }
       const res = json({ ok: true });
@@ -289,6 +308,69 @@ export async function POST(req: Request, ctx: Ctx) {
       const res = json({ ok: true });
       res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
       return res;
+    }
+
+    if (route === "profile/password") {
+      const parsed = PasswordBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) {
+        return json({ error: "A nova senha deve ter de 8 a 128 caracteres, com letras e números." }, 400);
+      }
+      if (!(await verifyCurrentAdminPassword(parsed.data.currentPassword))) {
+        return json({ error: "A senha atual está incorreta." }, 401);
+      }
+
+      try {
+        await updateSettings({ admin_password_hash: hashAdminPassword(parsed.data.newPassword) });
+      } catch (err) {
+        if (err instanceof Error && /admin_password_hash/.test(err.message)) {
+          return json({ error: "Atualize o banco executando supabase/schema.sql antes de alterar a senha." }, 409);
+        }
+        throw err;
+      }
+      return json({ ok: true });
+    }
+
+    if (route === "profile/avatar") {
+      const form = await req.formData().catch(() => null);
+      const avatar = form?.get("avatar");
+      if (!(avatar instanceof File)) return json({ error: "Selecione uma imagem." }, 400);
+
+      const extensions: Record<string, string> = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+      };
+      const extension = extensions[avatar.type];
+      if (!extension) return json({ error: "Use uma imagem JPG, PNG ou WebP." }, 400);
+      if (avatar.size > 5 * 1024 * 1024) {
+        return json({ error: "A foto deve ter no máximo 5 MB." }, 400);
+      }
+
+      const db = supabaseAdmin();
+      const existing = await getSettings();
+      const path = `profiles/admin-${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await db.storage.from("post-images").upload(path, avatar, {
+        contentType: avatar.type,
+        cacheControl: "3600",
+        upsert: false,
+      });
+      if (uploadError) return json({ error: `Não foi possível enviar a foto: ${uploadError.message}` }, 502);
+
+      const { data } = db.storage.from("post-images").getPublicUrl(path);
+      try {
+        await updateSettings({ admin_avatar_url: data.publicUrl });
+      } catch (err) {
+        await db.storage.from("post-images").remove([path]);
+        if (err instanceof Error && /admin_avatar_url/.test(err.message)) {
+          return json({ error: "Atualize o banco executando supabase/schema.sql antes de enviar a foto." }, 409);
+        }
+        throw err;
+      }
+
+      const marker = "/storage/v1/object/public/post-images/";
+      const oldPath = existing.admin_avatar_url?.split(marker)[1]?.split("?")[0];
+      if (oldPath) await db.storage.from("post-images").remove([decodeURIComponent(oldPath)]);
+      return json({ avatarUrl: data.publicUrl });
     }
 
     if (route === "generate/content") {
@@ -438,6 +520,11 @@ const SettingsBody = z.object({
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
 });
 
+const ProfileBody = z.object({
+  fullName: z.string().trim().min(2).max(100),
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+});
+
 const UpdateTopicBody = z.object({
   enabled: z.boolean().optional(),
   text: z.string().trim().min(1).max(MAX_TOPIC_LENGTH).optional(),
@@ -462,6 +549,29 @@ export async function PATCH(req: Request, ctx: Ctx) {
   return safely(async () => {
     const denied = await guard(route, req, url);
     if (denied) return denied;
+
+    if (route === "profile") {
+      const parsed = ProfileBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) {
+        return json({ error: "Informe um nome completo e um e-mail válidos." }, 400);
+      }
+      try {
+        const updated = await updateSettings({
+          admin_full_name: parsed.data.fullName,
+          admin_email: parsed.data.email,
+        });
+        return json({
+          fullName: updated.admin_full_name,
+          email: updated.admin_email,
+          avatarUrl: updated.admin_avatar_url,
+        });
+      } catch (err) {
+        if (err instanceof Error && /admin_(full_name|email|avatar|password)/.test(err.message)) {
+          return json({ error: "Atualize o banco executando supabase/schema.sql antes de salvar o perfil." }, 409);
+        }
+        throw err;
+      }
+    }
 
     if (route === "settings") {
       const parsed = SettingsBody.safeParse(await req.json().catch(() => null));

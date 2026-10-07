@@ -19,6 +19,12 @@ export interface Topic {
 
 export interface AppSettings {
   id: 1;
+  /** Editable profile for the single administrator. Environment values remain fallbacks. */
+  admin_full_name?: string | null;
+  admin_email?: string | null;
+  admin_avatar_url?: string | null;
+  /** Server-only scrypt hash. This field must never be returned to the browser. */
+  admin_password_hash?: string | null;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
   facebook_app_id: string | null;
   facebook_app_secret: string | null;

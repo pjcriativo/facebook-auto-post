@@ -16,7 +16,7 @@ import type { ContentProvider, GeneratedContent } from "@/lib/types";
 const SYSTEM_PROMPT = `Você é um redator especialista em conteúdo para Páginas do Facebook no Brasil.
 Dado um tema, escreva um único post de alto desempenho, obrigatoriamente em português do Brasil,
 em JSON estrito com este formato exato e sem nenhum outro conteúdo:
-{"title": string, "description": string, "hashtags": string[]}
+{"title": string, "description": string, "hashtags": string[], "artText": string}
 
 As três partes serão unidas em uma única legenda, nessa ordem, e devem formar um texto coeso.
 
@@ -24,6 +24,7 @@ Regras:
 - title: chamada inicial com até 80 caracteres. Tom natural, envolvente e específico. No máximo um emoji. Sem hashtags.
 - description: de 2 a 4 frases curtas e até 400 caracteres, fáceis de ler no celular. Use linguagem brasileira natural, sem clichês de marketing. Termine com uma pergunta ou convite sutil para comentários.
 - hashtags: de 3 a 5 hashtags curtas e relevantes, em minúsculas, sem o símbolo "#" e sem espaços.
+- artText: uma mensagem impactante e compartilhável de 100 a 260 caracteres sobre o tema. Use 2 a 4 parágrafos curtos separados por duas quebras de linha. Não use hashtags, aspas nem markdown. Deve funcionar sozinha dentro de uma arte quadrada.
 - Use ortografia, vocabulário e expressões naturais do português brasileiro. Não use português europeu.
 - Retorne SOMENTE o objeto JSON. Não use blocos Markdown nem comentários.`;
 
@@ -44,7 +45,8 @@ function parseContent(raw: string): GeneratedContent {
     typeof o.title !== "string" ||
     typeof o.description !== "string" ||
     !Array.isArray(o.hashtags) ||
-    !o.hashtags.every((h) => typeof h === "string")
+    !o.hashtags.every((h) => typeof h === "string") ||
+    (o.artText !== undefined && typeof o.artText !== "string")
   ) {
     throw new Error("A resposta da geração está malformada");
   }
@@ -52,6 +54,7 @@ function parseContent(raw: string): GeneratedContent {
     title: o.title.trim(),
     description: o.description.trim(),
     hashtags: (o.hashtags as string[]).map((h) => h.replace(/^#/, "").trim()).filter(Boolean),
+    artText: typeof o.artText === "string" ? o.artText.trim() : undefined,
   };
 }
 
@@ -125,6 +128,7 @@ function template(topic: string): GeneratedContent {
     title: `${clean} — vale a pena conferir`,
     description: `Reunimos algumas ideias sobre ${clean.toLowerCase()}. São sugestões simples que você pode colocar em prática nesta semana. Por qual delas você começaria?`,
     hashtags: [...new Set(words)].concat(["ideias"]).slice(0, 5),
+    artText: `${clean}.\n\nRespire, siga com calma e lembre-se de que cada passo também faz parte do caminho.`,
   };
 }
 

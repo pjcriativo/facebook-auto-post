@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowClockwise, Star, FlagBanner } from "@phosphor-icons/react/dist/ssr";
+import { ArrowClockwise, Star, FlagBanner, Info } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { PageCache } from "@/lib/types";
@@ -89,6 +89,18 @@ export default function PagesPage() {
           {error}
         </div>
       )}
+
+      <div className="flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+        <Info size={19} className="mt-0.5 shrink-0 text-primary" />
+        <div>
+          <p className="font-semibold text-foreground">Uma Página conhecida não aparece?</p>
+          <p className="mt-1 text-muted-foreground">
+            O painel só recebe do Facebook as Páginas liberadas para a conta conectada com permissão de criar conteúdo.
+            No Meta Business Suite, atribua a Página à pessoa conectada com controle total ou acesso a conteúdo;
+            depois desconecte e conecte o Facebook novamente em Configurações e clique em atualizar aqui.
+          </p>
+        </div>
+      </div>
 
       <Card>
         {loading ? (

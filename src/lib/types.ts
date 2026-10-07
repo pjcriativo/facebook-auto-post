@@ -1,5 +1,5 @@
-export type ImageSource = "ai" | "stock";
-export type ImageSourcePref = "ai" | "stock" | "mixed";
+export type ImageSource = "ai" | "stock" | "template";
+export type ImageSourcePref = "ai" | "stock" | "mixed" | "template";
 export type PostStatus = "draft" | "scheduled" | "posted" | "failed";
 
 /**
@@ -98,9 +98,24 @@ export interface GeneratedContent {
   title: string;
   description: string;
   hashtags: string[];
+  /** Short, line-break-friendly copy rendered inside a reusable visual template. */
+  artText?: string;
   provider?: ContentProvider;
   /** First provider failure, surfaced so a degraded draft can explain itself. */
   providerError?: string;
+}
+
+export interface ContentTemplate {
+  id: string;
+  name: string;
+  layout: "viral_quote";
+  avatar_url: string | null;
+  handle: string;
+  background_color: string;
+  text_color: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 /**

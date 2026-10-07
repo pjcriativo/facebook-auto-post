@@ -30,6 +30,14 @@ import {
 } from "@/lib/db/posts";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import {
+  createTemplate,
+  deleteTemplate,
+  getTemplate,
+  listTemplates,
+  updateTemplate,
+} from "@/lib/db/templates";
+import { renderTemplate } from "@/lib/templates/render";
+import {
   addTopics,
   deleteTopic,
   listTopics,
@@ -209,6 +217,10 @@ export async function GET(req: Request, ctx: Ctx) {
       });
     }
 
+    if (route === "templates") {
+      return json({ templates: await listTemplates() });
+    }
+
     if (route === "posts") {
       const status = url.searchParams.get("status");
       const posts = await listPosts({
@@ -291,7 +303,7 @@ const CreatePostBody = z.object({
   description: z.string().min(1).max(500),
   hashtags: z.array(z.string()).max(15).default([]),
   imageUrl: z.string().url(),
-  imageSource: z.enum(["ai", "stock"]),
+  imageSource: z.enum(["ai", "stock", "template"]),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1),
   pageName: z.string().min(1),
@@ -328,6 +340,14 @@ const PasswordBody = z.object({
 
 const ProviderName = z.enum(["groq", "gemini", "pollinations", "pexels"]);
 const TestProviderBody = z.object({ provider: ProviderName });
+const CreateTemplateBody = z.object({
+  name: z.string().trim().min(2).max(80),
+  handle: z.string().trim().min(2).max(80),
+});
+const RenderTemplateBody = z.object({
+  templateId: z.string().uuid(),
+  text: z.string().trim().min(2).max(700),
+});
 
 export async function POST(req: Request, ctx: Ctx) {
   const { path } = await ctx.params;
@@ -433,6 +453,55 @@ export async function POST(req: Request, ctx: Ctx) {
           502
         );
       }
+    }
+
+    if (route === "templates") {
+      const parsed = CreateTemplateBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Informe um nome e um @perfil válidos." }, 400);
+      return json({ template: await createTemplate(parsed.data) }, 201);
+    }
+
+    if (route === "templates/render") {
+      const parsed = RenderTemplateBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Template ou texto inválido." }, 400);
+      const template = await getTemplate(parsed.data.templateId);
+      if (!template || !template.enabled) return json({ error: "Template não encontrado ou desativado." }, 404);
+      return json(await renderTemplate(template, parsed.data.text));
+    }
+
+    if (route === "templates/avatar") {
+      const form = await req.formData().catch(() => null);
+      const templateId = form?.get("templateId");
+      const avatar = form?.get("avatar");
+      if (typeof templateId !== "string" || !(avatar instanceof File)) {
+        return json({ error: "Selecione um template e uma imagem." }, 400);
+      }
+      const extensions: Record<string, string> = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+      };
+      const extension = extensions[avatar.type];
+      if (!extension) return json({ error: "Use uma imagem JPG, PNG ou WebP." }, 400);
+      if (avatar.size > 5 * 1024 * 1024) return json({ error: "A foto deve ter no máximo 5 MB." }, 400);
+
+      const existing = await getTemplate(templateId);
+      if (!existing) return json({ error: "Template não encontrado." }, 404);
+
+      const db = supabaseAdmin();
+      const path = `templates/avatars/${templateId}-${crypto.randomUUID()}.${extension}`;
+      const { error } = await db.storage.from("post-images").upload(path, avatar, {
+        contentType: avatar.type,
+        cacheControl: "31536000",
+        upsert: false,
+      });
+      if (error) return json({ error: `Não foi possível enviar a foto: ${error.message}` }, 502);
+      const { data } = db.storage.from("post-images").getPublicUrl(path);
+      const updated = await updateTemplate(templateId, { avatar_url: data.publicUrl });
+      const marker = "/storage/v1/object/public/post-images/";
+      const oldPath = existing.avatar_url?.split(marker)[1]?.split("?")[0];
+      if (oldPath) await db.storage.from("post-images").remove([decodeURIComponent(oldPath)]);
+      return json({ template: updated });
     }
 
     if (route === "generate/content") {
@@ -594,6 +663,13 @@ const IntegrationBody = z.object({
   textModel: z.string().trim().min(1).max(120).optional(),
   imageModel: z.string().trim().min(1).max(120).optional(),
 });
+const UpdateTemplateBody = z.object({
+  name: z.string().trim().min(2).max(80).optional(),
+  handle: z.string().trim().min(2).max(80).optional(),
+  background_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  text_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  enabled: z.boolean().optional(),
+});
 
 const UpdateTopicBody = z.object({
   enabled: z.boolean().optional(),
@@ -699,6 +775,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return json({ topic: await updateTopic(path[1], parsed.data) });
     }
 
+    if (path.length === 2 && path[0] === "templates") {
+      const parsed = UpdateTemplateBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Dados do template inválidos." }, 400);
+      return json({ template: await updateTemplate(path[1], parsed.data) });
+    }
+
     // posts/<id>
     if (path.length === 2 && path[0] === "posts") {
       const id = path[1];
@@ -761,6 +843,11 @@ export async function DELETE(req: Request, ctx: Ctx) {
         pexels: { pexels_api_key: null },
       } as const;
       await updateSettings(columns[parsed.data]);
+      return json({ ok: true });
+    }
+
+    if (path.length === 2 && path[0] === "templates") {
+      await deleteTemplate(path[1]);
       return json({ ok: true });
     }
     return notFound();

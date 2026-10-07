@@ -101,6 +101,25 @@ create table if not exists topics (
   created_at timestamptz not null default now()
 );
 
+-- Reusable deterministic image layouts. Only the copy changes per post, so a
+-- template costs no image-generation tokens and keeps brand geometry exact.
+create table if not exists content_templates (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  layout text not null default 'viral_quote',
+  avatar_url text,
+  handle text not null default '@seuperfil',
+  background_color text not null default '#000000',
+  text_color text not null default '#ffffff',
+  enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into content_templates (id, name, handle)
+values ('00000000-0000-4000-8000-000000000001', 'Frase viral minimalista', 'pr.marcosgp')
+on conflict (id) do nothing;
+
 -- Case-insensitive uniqueness, so pasting the same list twice adds nothing.
 create unique index if not exists topics_text_lower_idx on topics (lower(text));
 create index if not exists topics_rotation_idx on topics (enabled, last_used_at nulls first);
@@ -112,6 +131,7 @@ alter table app_settings enable row level security;
 alter table posts enable row level security;
 alter table pages_cache enable row level security;
 alter table topics enable row level security;
+alter table content_templates enable row level security;
 
 -- Public bucket every generated/sourced image is re-hosted into, so a post's
 -- image keeps working even if the free provider it came from goes down later.

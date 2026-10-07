@@ -10,7 +10,10 @@ const STORAGE_BUCKET = "post-images";
 const WIDTH = 1200;
 const HEIGHT = 1200;
 
-export function resolveImageSource(pref: ImageSourcePref): ImageSource {
+export function resolveImageSource(pref: ImageSourcePref): Exclude<ImageSource, "template"> {
+  if (pref === "template") {
+    throw new Error("Templates devem ser renderizados pelo gerador de templates.");
+  }
   if (pref === "mixed") return Math.random() < 0.5 ? "ai" : "stock";
   return pref;
 }
@@ -89,7 +92,7 @@ export async function generateImage(
         : await fetchStockImageBytes(prompt, credentials.pexelsApiKey);
   } catch (err) {
     // Fall back to the other free source rather than failing the whole generation.
-    const fallbackSource: ImageSource = source === "ai" ? "stock" : "ai";
+    const fallbackSource: Exclude<ImageSource, "template"> = source === "ai" ? "stock" : "ai";
     try {
       blob =
         fallbackSource === "ai"

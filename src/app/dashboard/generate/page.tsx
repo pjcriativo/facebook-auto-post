@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { facebookPostUrl } from "@/lib/types";
-import type { GeneratedContent, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
+import type { ContentTemplate, GeneratedContent, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 
@@ -27,6 +27,9 @@ export default function GeneratePage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
   const [imagePref, setImagePref] = useState<ImageSourcePref>("ai");
+  const [templates, setTemplates] = useState<ContentTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [renderingTemplate, setRenderingTemplate] = useState(false);
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +82,15 @@ export default function GeneratePage() {
         if (d.defaultPageId) setPageId(d.defaultPageId);
       })
       .catch(() => {});
+
+    fetch("/api/templates")
+      .then((r) => r.json())
+      .then((d) => {
+        const enabled = (d.templates ?? []).filter((template: ContentTemplate) => template.enabled);
+        setTemplates(enabled);
+        setTemplateId(enabled[0]?.id ?? "");
+      })
+      .catch(() => {});
   }, []);
 
   const selectedPage = useMemo(() => pages.find((p) => p.page_id === pageId), [pages, pageId]);
@@ -96,24 +108,42 @@ export default function GeneratePage() {
     setImage(null);
 
     try {
-      const [contentRes, imageRes] = await Promise.all([
-        fetch("/api/generate/content", {
+      const contentRequest = fetch("/api/generate/content", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ topic }),
-        }),
-        fetch("/api/generate/image", {
+        });
+      const imageRequest = imagePref === "template"
+        ? null
+        : fetch("/api/generate/image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: topic, source: imagePref }),
-        }),
-      ]);
+        });
+
+      const contentRes = await contentRequest;
 
       if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Não foi possível gerar o conteúdo.");
-      if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
-
       const contentData: GeneratedContent = await contentRes.json();
-      const imageData: { url: string; source: ImageSource } = await imageRes.json();
+      let imageData: { url: string; source: ImageSource };
+
+      if (imagePref === "template") {
+        if (!templateId) throw new Error("Crie e ative um template antes de usar esta opção.");
+        const templateRes = await fetch("/api/templates/render", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            templateId,
+            text: contentData.artText || `${contentData.title}\n\n${contentData.description}`,
+          }),
+        });
+        if (!templateRes.ok) throw new Error((await templateRes.json()).error ?? "Não foi possível montar o template.");
+        imageData = await templateRes.json();
+      } else {
+        const imageRes = await imageRequest!;
+        if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
+        imageData = await imageRes.json();
+      }
 
       setContent(contentData);
       setImage(imageData);
@@ -121,6 +151,26 @@ export default function GeneratePage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Algo deu errado.");
       setStep("idle");
+    }
+  }
+
+  async function updateTemplateArt() {
+    if (!content || !templateId || !content.artText?.trim()) return;
+    setRenderingTemplate(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/templates/render", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId, text: content.artText }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível atualizar a arte.");
+      setImage(body);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar a arte.");
+    } finally {
+      setRenderingTemplate(false);
     }
   }
 
@@ -222,7 +272,20 @@ export default function GeneratePage() {
             <option value="ai">Imagem gerada por IA</option>
             <option value="stock">Foto gratuita de banco de imagens</option>
             <option value="mixed">Combinar as duas opções</option>
+            <option value="template">Template reutilizável (sem IA de imagem)</option>
           </select>
+          {imagePref === "template" && (
+            <select
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              aria-label="Template visual"
+            >
+              {templates.length === 0 ? <option value="">Nenhum template ativo</option> : templates.map((template) => (
+                <option key={template.id} value={template.id}>{template.name}</option>
+              ))}
+            </select>
+          )}
           <Button onClick={generate} disabled={step === "generating"}>
             <Sparkle size={16} weight="fill" />
             {step === "generating" ? "Gerando…" : "Gerar"}
@@ -311,7 +374,7 @@ export default function GeneratePage() {
                 <Image src={image.url} alt={content.title} fill unoptimized className="object-cover" />
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <Badge>{image.source === "ai" ? "Gerada por IA" : "Banco de imagens"}</Badge>
+                <Badge>{image.source === "ai" ? "Gerada por IA" : image.source === "template" ? "Template reutilizável" : "Banco de imagens"}</Badge>
                 <button
                   onClick={generate}
                   className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary"
@@ -353,6 +416,23 @@ export default function GeneratePage() {
                   className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
+
+              {image.source === "template" && (
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Texto dentro da arte</label>
+                  <textarea
+                    value={content.artText ?? ""}
+                    maxLength={700}
+                    rows={6}
+                    onChange={(e) => setContent({ ...content, artText: e.target.value })}
+                    className="mt-1 w-full resize-y rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  />
+                  <Button className="mt-2" size="sm" variant="secondary" onClick={updateTemplateArt} disabled={renderingTemplate || !content.artText?.trim()}>
+                    <ArrowClockwise size={14} className={renderingTemplate ? "animate-spin" : ""} />
+                    {renderingTemplate ? "Atualizando…" : "Atualizar arte"}
+                  </Button>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-semibold text-muted-foreground">Hashtags</label>

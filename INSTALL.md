@@ -101,6 +101,7 @@ and takes two minutes from your Facebook account.
    | --- | --- |
    | `NEXT_PUBLIC_SUPABASE_URL` | The Project URL from step 1 |
    | `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key from step 1 |
+   | `ADMIN_EMAIL` | The e-mail used to sign in to the dashboard |
    | `ADMIN_PASSWORD` | A password you choose — this opens your dashboard |
    | `SESSION_SECRET` | A long random string (see below) |
 

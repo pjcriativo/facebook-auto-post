@@ -60,6 +60,7 @@ Project URL and the `service_role` key.
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | The `service_role` key (server-side only, never exposed) |
+| `ADMIN_EMAIL` | The e-mail used to sign in to the dashboard |
 | `ADMIN_PASSWORD` | The password that opens your dashboard |
 | `SESSION_SECRET` | Any long random string — `openssl rand -base64 32` |
 

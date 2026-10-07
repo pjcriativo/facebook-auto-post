@@ -219,7 +219,10 @@ export async function GET(req: Request, ctx: Ctx) {
 
 /* ----------------------------------------------------------------- POST */
 
-const LoginBody = z.object({ password: z.string() });
+const LoginBody = z.object({
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  password: z.string(),
+});
 
 const ContentBody = z.object({ topic: z.string().trim().min(2).max(200) });
 
@@ -270,8 +273,12 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (route === "auth/login") {
       const parsed = LoginBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success || parsed.data.password !== env.adminPassword) {
-        return json({ error: "Incorrect password." }, 401);
+      if (
+        !parsed.success ||
+        parsed.data.email !== env.adminEmail ||
+        parsed.data.password !== env.adminPassword
+      ) {
+        return json({ error: "E-mail ou senha incorretos." }, 401);
       }
       const res = json({ ok: true });
       res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions);

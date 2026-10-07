@@ -28,6 +28,9 @@ export const env = {
   },
 
   // Single-user admin auth
+  get adminEmail() {
+    return required("ADMIN_EMAIL").trim().toLowerCase();
+  },
   get adminPassword() {
     return required("ADMIN_PASSWORD");
   },

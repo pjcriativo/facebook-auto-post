@@ -18,6 +18,7 @@ cd "$ROOT"
 set -a; source "$SECRETS_FILE"; set +a
 
 : "${VERCEL_TOKEN:?VERCEL_TOKEN missing in secrets file}"
+: "${ADMIN_EMAIL:?ADMIN_EMAIL missing in secrets file}"
 : "${ADMIN_PASSWORD:?ADMIN_PASSWORD missing in secrets file}"
 
 # Both come from the secrets file or the environment; there are no defaults,
@@ -48,6 +49,7 @@ else
   echo "==> Setting production environment variables"
 put_env NEXT_PUBLIC_SUPABASE_URL   "${NEXT_PUBLIC_SUPABASE_URL:?}"
 put_env SUPABASE_SERVICE_ROLE_KEY  "${SUPABASE_SERVICE_ROLE_KEY:?}"
+put_env ADMIN_EMAIL                "$ADMIN_EMAIL"
 put_env ADMIN_PASSWORD             "$ADMIN_PASSWORD"
 put_env SESSION_SECRET             "$SESSION_SECRET"
 put_env CRON_SECRET                "$CRON_SECRET"

@@ -15,6 +15,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +28,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ email, password }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -60,15 +61,29 @@ function LoginForm() {
         >
           <h1 className="font-heading text-xl font-bold text-foreground">Facebook Auto Post</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Digite a senha de administrador para acessar o dashboard.
+            Digite o e-mail e a senha de administrador para acessar o dashboard.
           </p>
+          <label className="mt-6 block text-sm font-medium text-foreground" htmlFor="email">
+            E-mail
+          </label>
+          <input
+            id="email"
+            type="email"
+            autoComplete="username"
+            autoFocus
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1.5 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/30"
+            placeholder="admin@exemplo.com"
+          />
           <label className="mt-6 block text-sm font-medium text-foreground" htmlFor="password">
-            Password
+            Senha
           </label>
           <input
             id="password"
             type="password"
-            autoFocus
+            autoComplete="current-password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -84,10 +99,10 @@ function LoginForm() {
 
           <button
             type="submit"
-            disabled={loading || password.length === 0}
+            disabled={loading || email.length === 0 || password.length === 0}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "Signing in…" : "Sign in"}
+            {loading ? "Entrando…" : "Entrar"}
           </button>
         </form>
       </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowClockwise, Star, FlagBanner, Info } from "@phosphor-icons/react/dist/ssr";
+import { ArrowClockwise, Star, FlagBanner, Info, Plus } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { PageCache } from "@/lib/types";
@@ -14,6 +14,8 @@ export default function PagesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [notConnected, setNotConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pageReference, setPageReference] = useState("");
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async (refresh: boolean) => {
     if (refresh) setRefreshing(true);
@@ -58,6 +60,28 @@ export default function PagesPage() {
     }
   }
 
+  async function addPage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pageReference.trim()) return;
+    setAdding(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/facebook/pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference: pageReference }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível adicionar essa Página.");
+      setPageReference("");
+      await load(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível adicionar essa Página.");
+    } finally {
+      setAdding(false);
+    }
+  }
+
   if (notConnected) {
     return (
       <Card className="py-10 text-center">
@@ -95,12 +119,30 @@ export default function PagesPage() {
         <div>
           <p className="font-semibold text-foreground">Uma Página conhecida não aparece?</p>
           <p className="mt-1 text-muted-foreground">
-            O painel só recebe do Facebook as Páginas liberadas para a conta conectada com permissão de criar conteúdo.
-            No Meta Business Suite, atribua a Página à pessoa conectada com controle total ou acesso a conteúdo;
-            depois desconecte e conecte o Facebook novamente em Configurações e clique em atualizar aqui.
+            Algumas Páginas de portfólios empresariais não aparecem na lista automática da Meta.
+            Se isso acontecer, cole abaixo a URL ou o ID. O painel só adiciona a Página se a conta
+            conectada tiver permissão para publicar nela.
           </p>
         </div>
       </div>
+
+      <Card>
+        <form onSubmit={addPage} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-sm font-medium text-foreground">
+            Adicionar Página por URL ou ID
+            <input
+              value={pageReference}
+              onChange={(event) => setPageReference(event.target.value)}
+              placeholder="https://www.facebook.com/sua-pagina"
+              className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal outline-none transition focus:border-primary"
+            />
+          </label>
+          <Button type="submit" disabled={adding || !pageReference.trim()}>
+            <Plus size={15} />
+            {adding ? "Adicionando…" : "Adicionar Página"}
+          </Button>
+        </form>
+      </Card>
 
       <Card>
         {loading ? (

@@ -48,6 +48,7 @@ import {
 } from "@/lib/db/topics";
 import {
   fetchAccount,
+  fetchPage,
   fetchPages,
   missingPermissions,
   FacebookNotConnectedError,
@@ -312,6 +313,7 @@ const CreatePostBody = z.object({
 });
 
 const DefaultPageBody = z.object({ pageId: z.string().min(1) });
+const AddFacebookPageBody = z.object({ reference: z.string().trim().min(1).max(300) });
 
 // A pasted list is split client-side into lines; 500 is far more than anyone
 // types, and bounds a single request.
@@ -577,8 +579,7 @@ export async function POST(req: Request, ctx: Ctx) {
       // The Page token is fetched fresh rather than taken from the client, so
       // a token never has to travel to the browser and back.
       try {
-        const page = (await fetchPages()).find((p) => p.id === parsed.data.pageId);
-        if (!page) return json({ error: "Essa Página não está disponível nesta conta." }, 404);
+        const page = await fetchPage(parsed.data.pageId);
 
         await updateSettings({
           default_page_id: page.id,
@@ -589,6 +590,29 @@ export async function POST(req: Request, ctx: Ctx) {
       } catch (err) {
         if (err instanceof FacebookNotConnectedError) return json({ error: err.message }, 409);
         throw err;
+      }
+    }
+
+    if (route === "facebook/pages") {
+      const parsed = AddFacebookPageBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Informe a URL ou o ID da Página." }, 400);
+
+      try {
+        const page = await fetchPage(parsed.data.reference);
+        const db = supabaseAdmin();
+        const { error } = await db.from("pages_cache").upsert(
+          { page_id: page.id, name: page.name, category: page.category },
+          { onConflict: "page_id" }
+        );
+        if (error) throw error;
+        return json({ page: { page_id: page.id, name: page.name, category: page.category } });
+      } catch (err) {
+        if (err instanceof FacebookNotConnectedError) return json({ error: err.message }, 409);
+        return json({
+          error: err instanceof Error
+            ? err.message
+            : "Não foi possível adicionar essa Página.",
+        }, 422);
       }
     }
 
@@ -861,6 +885,19 @@ async function getPages(refresh: boolean) {
   try {
     if (refresh) {
       const pages = await fetchPages();
+      const { data: previous } = await db.from("pages_cache").select("page_id");
+      const found = new Set(pages.map((page) => page.id));
+
+      // Preserve manually added business Pages only while Meta still confirms
+      // the connected account can obtain their Page token.
+      for (const cached of previous ?? []) {
+        if (found.has(cached.page_id)) continue;
+        try {
+          const page = await fetchPage(cached.page_id);
+          pages.push(page);
+          found.add(page.id);
+        } catch {}
+      }
       if (pages.length > 0) {
         await db.from("pages_cache").delete().neq("page_id", "");
         await db

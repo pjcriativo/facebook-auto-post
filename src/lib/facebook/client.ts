@@ -49,6 +49,56 @@ export interface FacebookPage {
   access_token: string;
 }
 
+function pageReference(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("Informe a URL, o nome de usuário ou o ID da Página.");
+
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    if (!["facebook.com", "www.facebook.com", "m.facebook.com"].includes(url.hostname.toLowerCase())) {
+      throw new Error("Use uma URL do Facebook ou o ID da Página.");
+    }
+    const segment = url.pathname.split("/").filter(Boolean)[0];
+    if (!segment || ["pages", "profile.php"].includes(segment.toLowerCase())) {
+      const id = url.searchParams.get("id");
+      if (id) return id;
+      throw new Error("Não foi possível identificar a Página nessa URL.");
+    }
+    return segment;
+  } catch (err) {
+    if (/^https?:\/\//i.test(trimmed) || trimmed.includes("facebook.com")) {
+      throw err instanceof Error ? err : new Error("URL da Página inválida.");
+    }
+    return trimmed.replace(/^@/, "");
+  }
+}
+
+/**
+ * Resolves one Page explicitly. Meta sometimes omits business-portfolio Pages
+ * from `/me/accounts` even though the same user token can mint their Page
+ * token. A direct lookup is both the fallback and the authorization check:
+ * users without Page access do not receive `access_token` here.
+ */
+export async function fetchPage(reference: string): Promise<FacebookPage> {
+  const settings = await loadSettings();
+  if (!settings.facebook_user_token) throw new FacebookNotConnectedError();
+
+  const ref = pageReference(reference);
+  const data = await graph(`/${encodeURIComponent(ref)}`, {
+    access_token: settings.facebook_user_token,
+    fields: "id,name,category,access_token",
+  });
+  if (!data.id || !data.name || !data.access_token) {
+    throw new Error("A conta conectada não tem permissão para publicar nessa Página.");
+  }
+  return {
+    id: data.id,
+    name: data.name,
+    category: data.category ?? null,
+    access_token: data.access_token,
+  };
+}
+
 /**
  * Every Page this person can create content on. `tasks` is filtered rather
  * than trusted wholesale: being able to see a Page does not mean being allowed

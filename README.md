@@ -4,7 +4,8 @@ Pick a topic — or let it pick one — and it writes a Facebook Page post, gene
 matching image, and publishes it. On autopilot it does all of that on a schedule with
 nobody clicking anything.
 
-Every generation source is free. No paid API keys anywhere in the pipeline.
+Provider keys are configured and tested from the dashboard; availability and pricing
+depend on each provider's current plan.
 
 ## What it does
 
@@ -77,18 +78,21 @@ redeploy needed — and copy the redirect URI shown on that screen into your Met
 
 Then hit **Connect**, pick a Page, and you are running.
 
-### Better AI copy (optional, still free)
+### Content APIs
 
-Pollinations' text endpoint now rejects anonymous callers, so without a key the app
-falls back to template copy — and says so in the UI rather than passing it off as AI
-output. A free key from either provider restores real generation:
+Open **APIs** in the dashboard to save, replace, remove and test provider keys without
+redeploying. Text generation tries Groq, Gemini and Pollinations in that order. Images
+use Pollinations for AI generation and Pexels for stock photos. The model IDs are also
+editable from the same screen.
 
-| Variable | Get one at |
+Environment variables remain optional deployment-time fallbacks:
+
+| Variable | Provider |
 | --- | --- |
-| `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) |
-| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-
-Image generation stays keyless and works as-is.
+| `GROQ_API_KEY` | Groq |
+| `GEMINI_API_KEY` | Google Gemini |
+| `POLLINATIONS_API_KEY` | Pollinations text and images |
+| `PEXELS_API_KEY` | Pexels stock photos |
 
 ### Posting more than once a day
 
@@ -104,7 +108,7 @@ can trigger it.
 - The dashboard and the entire API are behind a single admin session cookie
   (HMAC-signed, `ADMIN_PASSWORD`). The cron route accepts `CRON_SECRET` instead, and
   falls back to requiring the session when no secret is configured.
-- The Meta App Secret, the long-lived user token, and Page access tokens are stored in
+- Provider keys, the Meta App Secret, the long-lived user token, and Page access tokens are stored in
   your own Supabase database and are stripped from every API response — the browser only
   ever learns *whether* they are set.
 - Page tokens are fetched server-side when you choose a Page, so a publishing credential

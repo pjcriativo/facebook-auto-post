@@ -17,6 +17,15 @@ create table if not exists app_settings (
   admin_email text,
   admin_avatar_url text,
   admin_password_hash text,
+  -- Content provider credentials. These never leave authenticated server APIs.
+  groq_api_key text,
+  groq_model text default 'llama-3.3-70b-versatile',
+  gemini_api_key text,
+  gemini_model text default 'gemini-3.5-flash-lite',
+  pollinations_api_key text,
+  pollinations_text_model text default 'openai',
+  pollinations_image_model text default 'flux',
+  pexels_api_key text,
   -- Meta app credentials. Kept here rather than in env vars so that installing
   -- this app is a paste into Settings, not a redeploy. Never leaves the server.
   facebook_app_id text,
@@ -127,3 +136,11 @@ alter table app_settings add column if not exists admin_full_name text;
 alter table app_settings add column if not exists admin_email text;
 alter table app_settings add column if not exists admin_avatar_url text;
 alter table app_settings add column if not exists admin_password_hash text;
+alter table app_settings add column if not exists groq_api_key text;
+alter table app_settings add column if not exists groq_model text default 'llama-3.3-70b-versatile';
+alter table app_settings add column if not exists gemini_api_key text;
+alter table app_settings add column if not exists gemini_model text default 'gemini-3.5-flash-lite';
+alter table app_settings add column if not exists pollinations_api_key text;
+alter table app_settings add column if not exists pollinations_text_model text default 'openai';
+alter table app_settings add column if not exists pollinations_image_model text default 'flux';
+alter table app_settings add column if not exists pexels_api_key text;

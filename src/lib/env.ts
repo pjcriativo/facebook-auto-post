@@ -64,6 +64,9 @@ export const env = {
   get geminiApiKey() {
     return optional("GEMINI_API_KEY");
   },
+  get pollinationsApiKey() {
+    return optional("POLLINATIONS_API_KEY");
+  },
 
   // Free image sources
   get pexelsApiKey() {

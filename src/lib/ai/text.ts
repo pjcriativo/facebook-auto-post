@@ -1,15 +1,13 @@
-import { env } from "@/lib/env";
+import { getAiCredentials, type AiCredentials } from "@/lib/ai/credentials";
 import type { ContentProvider, GeneratedContent } from "@/lib/types";
 
 /**
  * Facebook copy generation across free LLM providers, tried in order until
  * one returns usable JSON.
  *
- * Pollinations is the only keyless option, but its text endpoint now answers
- * `402 Payment Required` for anonymous callers — inside a 200 response body,
- * so the status alone does not reveal it. Groq and Gemini both have free tiers
- * that need nothing but a no-cost API key, so they are preferred whenever one
- * is configured. If every provider fails the caller still gets a postable
+ * Groq, Gemini and Pollinations all use server-only API keys configured in the
+ * dashboard (with environment variables as fallbacks). If every provider
+ * fails, the caller still gets a postable
  * draft from a deterministic template, but the result says so via `provider`:
  * silently shipping template copy as if it were AI copy is worse than an
  * honest warning.
@@ -86,8 +84,8 @@ async function chatCompletion(
   if (!res.ok) throw new Error(`${host} respondeu com o status ${res.status}`);
 
   const data = JSON.parse(body);
-  // Pollinations returns quota errors with a 200 status, so the body has to be
-  // inspected rather than trusting res.ok.
+  // Some OpenAI-compatible providers return quota errors inside a successful
+  // HTTP response, so the body has to be inspected rather than trusting res.ok.
   if (data?.error) {
     const message = typeof data.error === "string" ? data.error : data.error?.message;
     throw new Error(`${host}: ${message ?? "erro desconhecido"}`);
@@ -98,12 +96,12 @@ async function chatCompletion(
   return content;
 }
 
-async function geminiCompletion(topic: string, apiKey: string): Promise<string> {
+async function geminiCompletion(topic: string, apiKey: string, model: string): Promise<string> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [{ role: "user", parts: [{ text: `Tema: ${topic}` }] }],
@@ -132,16 +130,22 @@ function template(topic: string): GeneratedContent {
 
 type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
-function providerChain(topic: string): Attempt[] {
+function providerChain(topic: string, credentials: AiCredentials): Attempt[] {
   const chain: Attempt[] = [];
 
   // A configured free-tier key beats the keyless service on both quality and
   // reliability, so those go first whenever one is present.
   // Groq retires model ids without notice (llama-3.3-70b-versatile vanished
   // mid-build), so try a short list rather than pinning a single name.
-  const groqKey = env.groqApiKey;
+  const groqKey = credentials.groqApiKey;
   if (groqKey) {
-    for (const model of ["openai/gpt-oss-120b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b"]) {
+    const models = [
+      credentials.groqModel,
+      "llama-3.3-70b-versatile",
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+    ];
+    for (const model of [...new Set(models)]) {
       chain.push({
         provider: "groq",
         run: () =>
@@ -150,23 +154,35 @@ function providerChain(topic: string): Attempt[] {
     }
   }
 
-  const geminiKey = env.geminiApiKey;
+  const geminiKey = credentials.geminiApiKey;
   if (geminiKey) {
-    chain.push({ provider: "gemini", run: () => geminiCompletion(topic, geminiKey) });
+    chain.push({
+      provider: "gemini",
+      run: () => geminiCompletion(topic, geminiKey, credentials.geminiModel),
+    });
   }
 
-  chain.push({
-    provider: "pollinations",
-    run: () => chatCompletion("https://text.pollinations.ai/openai", "openai-fast", topic),
-  });
+  if (credentials.pollinationsApiKey) {
+    chain.push({
+      provider: "pollinations",
+      run: () =>
+        chatCompletion(
+          "https://gen.pollinations.ai/v1/chat/completions",
+          credentials.pollinationsTextModel,
+          topic,
+          credentials.pollinationsApiKey
+        ),
+    });
+  }
 
   return chain;
 }
 
 export async function generateContent(topic: string): Promise<GeneratedContent> {
   const failures: string[] = [];
+  const credentials = await getAiCredentials();
 
-  for (const { provider, run } of providerChain(topic)) {
+  for (const { provider, run } of providerChain(topic, credentials)) {
     try {
       return { ...parseContent(await run()), provider };
     } catch (err) {

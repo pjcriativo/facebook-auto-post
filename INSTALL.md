@@ -344,24 +344,27 @@ Now open **Generate**, type a topic, click **Generate**, then **Publish now**. A
 
 ---
 
-## Step 5 — Better AI copy (optional, still free)
+## Step 5 — Configure content APIs
 
 Without an AI key the app falls back to template copy — and tells you so on the
-Generate screen rather than passing it off as AI writing. The keyless service it
-used to rely on now rejects anonymous traffic.
+Generate screen rather than passing it off as AI writing. Open **APIs** in the
+sidebar to configure and test each provider directly from the dashboard.
 
-To restore real generation, get a free key from either provider and add it as an
-environment variable in Vercel:
+Text uses Groq, Gemini and Pollinations in that order. Images use Pollinations or
+Pexels. The dashboard accepts all four keys and lets you choose the model IDs.
+Environment variables are optional fallbacks:
 
 | Variable | Get one at |
 | --- | --- |
 | `GROQ_API_KEY` | [console.groq.com/keys](https://console.groq.com/keys) |
 | `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `POLLINATIONS_API_KEY` | [enter.pollinations.ai](https://enter.pollinations.ai/) |
+| `PEXELS_API_KEY` | [pexels.com/api](https://www.pexels.com/api/new/) |
 
 Redeploy afterwards — Vercel only applies environment variables to new
 deployments.
 
-Image generation needs no key and already works.
+When using the dashboard, saving takes effect immediately and does not require a redeploy.
 
 ---
 
@@ -574,8 +577,9 @@ that *after* the build succeeds, and the real message never reaches the build lo
 Put the schedule back to once daily.
 
 **Copy looks generic and mentions a template**
-Every AI provider was unreachable. Add a `GROQ_API_KEY` (step 5). The app is
-telling you the truth rather than pretending.
+Every AI provider was unreachable. Open **APIs**, save a provider key and use
+**Test connection** to see the exact error. The app is telling you the truth
+rather than pretending.
 
 **Posts publish but the image is a collage of thumbnails**
 Use a more specific topic. Listicle-shaped phrasing ("10 ideas for…") pushes image
@@ -585,6 +589,6 @@ models toward grids.
 
 ## What it costs
 
-Nothing. Supabase, Vercel, Meta's developer platform, Groq and the image generator
-all have free tiers this app stays inside. There is no paid dependency anywhere in
-the pipeline.
+The app itself has no paid dependency. Supabase, Vercel and content providers may
+offer free tiers, but quotas and pricing depend on the account and can change. Check
+each provider's dashboard before enabling automated publishing at scale.

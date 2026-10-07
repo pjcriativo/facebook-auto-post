@@ -10,6 +10,7 @@ import {
   ListChecks,
   FlagBanner,
   GearSix,
+  PlugsConnected,
 } from "@phosphor-icons/react/dist/ssr";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/dashboard/queue", label: "Fila", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/apis", label: "APIs", icon: PlugsConnected },
   { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
 ];
 

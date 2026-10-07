@@ -25,6 +25,15 @@ export interface AppSettings {
   admin_avatar_url?: string | null;
   /** Server-only scrypt hash. This field must never be returned to the browser. */
   admin_password_hash?: string | null;
+  /** Server-only content-provider credentials and editable model choices. */
+  groq_api_key?: string | null;
+  groq_model?: string | null;
+  gemini_api_key?: string | null;
+  gemini_model?: string | null;
+  pollinations_api_key?: string | null;
+  pollinations_text_model?: string | null;
+  pollinations_image_model?: string | null;
+  pexels_api_key?: string | null;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
   facebook_app_id: string | null;
   facebook_app_secret: string | null;

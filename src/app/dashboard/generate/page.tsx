@@ -324,9 +324,8 @@ export default function GeneratePage() {
             <div className="space-y-4">
               {content.provider === "template" ? (
                 <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  Nenhum serviço gratuito de IA respondeu, então este texto veio de um
-                  modelo básico. Edite-o antes de publicar ou adicione uma GROQ_API_KEY ou
-                  GEMINI_API_KEY gratuita para restaurar a geração com IA.
+                  Nenhum serviço de IA respondeu, então este texto veio de um modelo básico.
+                  Edite-o antes de publicar ou configure e teste uma chave na aba APIs.
                 </p>
               ) : content.provider ? (
                 <p className="text-xs text-muted-foreground">

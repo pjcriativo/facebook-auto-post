@@ -11,6 +11,7 @@ import {
   ListChecks,
   FlagBanner,
   GearSix,
+  PlugsConnected,
   List,
   X,
   SignOut,
@@ -27,6 +28,7 @@ const NAV = [
   { href: "/dashboard/queue", label: "Fila", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/apis", label: "APIs", icon: PlugsConnected },
   { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
 ];
 
@@ -37,6 +39,7 @@ const TITLES: Record<string, string> = {
   "/dashboard/queue": "Fila",
   "/dashboard/history": "Histórico",
   "/dashboard/pages": "Páginas",
+  "/dashboard/apis": "APIs",
   "/dashboard/settings": "Configurações",
 };
 

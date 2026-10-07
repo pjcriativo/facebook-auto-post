@@ -14,6 +14,11 @@ import {
 } from "@/lib/auth/credentials";
 import { generateContent } from "@/lib/ai/text";
 import { generateImage } from "@/lib/ai/image";
+import {
+  DEFAULT_AI_MODELS,
+  getAiCredentials,
+  testApiProvider,
+} from "@/lib/ai/credentials";
 import { getTrendingTopics } from "@/lib/trends";
 import {
   createPostRecord,
@@ -49,7 +54,7 @@ import { OAUTH_STATE_COOKIE } from "@/lib/facebook/oauth-state";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { maybeRunAutopilot } from "@/lib/autopilot";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import type { PostStatus } from "@/lib/types";
+import type { AppSettings, PostStatus } from "@/lib/types";
 
 /**
  * Every API endpoint lives in this one catch-all handler on purpose.
@@ -134,9 +139,13 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     default_page_token,
     facebook_app_secret,
     admin_password_hash,
+    groq_api_key,
+    gemini_api_key,
+    pollinations_api_key,
+    pexels_api_key,
     ...safe
   } = settings;
-  void admin_password_hash;
+  void [admin_password_hash, groq_api_key, gemini_api_key, pollinations_api_key, pexels_api_key];
   return {
     ...safe,
     admin_email: settings.admin_email?.trim().toLowerCase() || env.adminEmail,
@@ -166,6 +175,38 @@ export async function GET(req: Request, ctx: Ctx) {
 
     if (route === "settings") {
       return json(await publicSettings(await getSettings()));
+    }
+
+    if (route === "integrations") {
+      const settings = await getSettings();
+      const credentials = await getAiCredentials();
+      const source = (stored: string | null | undefined, fallback: string) =>
+        stored?.trim() ? "panel" : fallback ? "environment" : "none";
+      return json({
+        providers: {
+          groq: {
+            configured: Boolean(credentials.groqApiKey),
+            source: source(settings.groq_api_key, env.groqApiKey),
+            model: credentials.groqModel,
+          },
+          gemini: {
+            configured: Boolean(credentials.geminiApiKey),
+            source: source(settings.gemini_api_key, env.geminiApiKey),
+            model: credentials.geminiModel,
+          },
+          pollinations: {
+            configured: Boolean(credentials.pollinationsApiKey),
+            source: source(settings.pollinations_api_key, env.pollinationsApiKey),
+            textModel: credentials.pollinationsTextModel,
+            imageModel: credentials.pollinationsImageModel,
+          },
+          pexels: {
+            configured: Boolean(credentials.pexelsApiKey),
+            source: source(settings.pexels_api_key, env.pexelsApiKey),
+          },
+        },
+        defaults: DEFAULT_AI_MODELS,
+      });
     }
 
     if (route === "posts") {
@@ -285,6 +326,9 @@ const PasswordBody = z.object({
     .regex(/[0-9]/),
 });
 
+const ProviderName = z.enum(["groq", "gemini", "pollinations", "pexels"]);
+const TestProviderBody = z.object({ provider: ProviderName });
+
 export async function POST(req: Request, ctx: Ctx) {
   const { path } = await ctx.params;
   const route = path.join("/");
@@ -371,6 +415,24 @@ export async function POST(req: Request, ctx: Ctx) {
       const oldPath = existing.admin_avatar_url?.split(marker)[1]?.split("?")[0];
       if (oldPath) await db.storage.from("post-images").remove([decodeURIComponent(oldPath)]);
       return json({ avatarUrl: data.publicUrl });
+    }
+
+    if (route === "integrations/test") {
+      const parsed = TestProviderBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Provedor inválido." }, 400);
+      const startedAt = Date.now();
+      try {
+        const result = await testApiProvider(parsed.data.provider);
+        return json({ ok: true, ...result, latencyMs: Date.now() - startedAt });
+      } catch (err) {
+        return json(
+          {
+            error: err instanceof Error ? err.message : "Não foi possível validar essa API.",
+            latencyMs: Date.now() - startedAt,
+          },
+          502
+        );
+      }
     }
 
     if (route === "generate/content") {
@@ -525,6 +587,14 @@ const ProfileBody = z.object({
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
 });
 
+const IntegrationBody = z.object({
+  provider: ProviderName,
+  apiKey: z.string().trim().min(8).max(500).optional(),
+  model: z.string().trim().min(1).max(120).optional(),
+  textModel: z.string().trim().min(1).max(120).optional(),
+  imageModel: z.string().trim().min(1).max(120).optional(),
+});
+
 const UpdateTopicBody = z.object({
   enabled: z.boolean().optional(),
   text: z.string().trim().min(1).max(MAX_TOPIC_LENGTH).optional(),
@@ -568,6 +638,40 @@ export async function PATCH(req: Request, ctx: Ctx) {
       } catch (err) {
         if (err instanceof Error && /admin_(full_name|email|avatar|password)/.test(err.message)) {
           return json({ error: "Atualize o banco executando supabase/schema.sql antes de salvar o perfil." }, 409);
+        }
+        throw err;
+      }
+    }
+
+    if (route === "integrations") {
+      const parsed = IntegrationBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Chave ou modelo inválido." }, 400);
+      const input = parsed.data;
+      const patch: Partial<AppSettings> = {};
+
+      if (input.provider === "groq") {
+        if (input.apiKey) patch.groq_api_key = input.apiKey;
+        if (input.model) patch.groq_model = input.model;
+      } else if (input.provider === "gemini") {
+        if (input.apiKey) patch.gemini_api_key = input.apiKey;
+        if (input.model) patch.gemini_model = input.model;
+      } else if (input.provider === "pollinations") {
+        if (input.apiKey) patch.pollinations_api_key = input.apiKey;
+        if (input.textModel) patch.pollinations_text_model = input.textModel;
+        if (input.imageModel) patch.pollinations_image_model = input.imageModel;
+      } else if (input.apiKey) {
+        patch.pexels_api_key = input.apiKey;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        return json({ error: "Informe uma nova chave ou modelo para salvar." }, 400);
+      }
+      try {
+        await updateSettings(patch);
+        return json({ ok: true });
+      } catch (err) {
+        if (err instanceof Error && /(groq|gemini|pollinations|pexels)_/.test(err.message)) {
+          return json({ error: "Aplique a migração mais recente do Supabase antes de salvar APIs." }, 409);
         }
         throw err;
       }
@@ -644,6 +748,19 @@ export async function DELETE(req: Request, ctx: Ctx) {
 
     if (path.length === 2 && path[0] === "topics") {
       await deleteTopic(path[1]);
+      return json({ ok: true });
+    }
+
+    if (path.length === 2 && path[0] === "integrations") {
+      const parsed = ProviderName.safeParse(path[1]);
+      if (!parsed.success) return json({ error: "Provedor inválido." }, 400);
+      const columns = {
+        groq: { groq_api_key: null },
+        gemini: { gemini_api_key: null },
+        pollinations: { pollinations_api_key: null },
+        pexels: { pexels_api_key: null },
+      } as const;
+      await updateSettings(columns[parsed.data]);
       return json({ ok: true });
     }
     return notFound();

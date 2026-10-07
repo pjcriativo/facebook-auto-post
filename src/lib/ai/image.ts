@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { env } from "@/lib/env";
+import { getAiCredentials } from "@/lib/ai/credentials";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ImageSource, ImageSourcePref } from "@/lib/types";
 
@@ -23,18 +23,22 @@ export function resolveImageSource(pref: ImageSourcePref): ImageSource {
 const PHOTO_STYLE =
   "single subject, professional photograph, natural light, shallow depth of field, high detail, no text, no watermark, no collage, no grid";
 
-async function fetchAiImageBytes(prompt: string): Promise<Blob> {
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(
+async function fetchAiImageBytes(prompt: string, apiKey: string, model: string): Promise<Blob> {
+  if (!apiKey) throw new Error("A chave do Pollinations não está configurada");
+  const url = `https://gen.pollinations.ai/image/${encodeURIComponent(
     `${prompt}, ${PHOTO_STYLE}`
-  )}?width=${WIDTH}&height=${HEIGHT}&nologo=true&seed=${Math.floor(Math.random() * 1_000_000)}`;
+  )}?width=${WIDTH}&height=${HEIGHT}&nologo=true&model=${encodeURIComponent(model)}&seed=${Math.floor(Math.random() * 1_000_000)}`;
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!res.ok) throw new Error(`A API de imagens do Pollinations respondeu com o status ${res.status}`);
   return res.blob();
 }
 
-async function fetchStockImageBytes(query: string): Promise<Blob> {
-  if (!env.pexelsApiKey) throw new Error("A variável PEXELS_API_KEY não está configurada");
+async function fetchStockImageBytes(query: string, apiKey: string): Promise<Blob> {
+  if (!apiKey) throw new Error("A chave do Pexels não está configurada");
 
   const searchUrl = `https://api.pexels.com/v1/search?${new URLSearchParams({
     query,
@@ -42,7 +46,7 @@ async function fetchStockImageBytes(query: string): Promise<Blob> {
     per_page: "10",
   })}`;
   const searchRes = await fetch(searchUrl, {
-    headers: { Authorization: env.pexelsApiKey },
+    headers: { Authorization: apiKey },
     signal: AbortSignal.timeout(15_000),
   });
   if (!searchRes.ok) throw new Error(`A pesquisa no Pexels falhou (${searchRes.status})`);
@@ -71,18 +75,30 @@ export async function generateImage(
   pref: ImageSourcePref
 ): Promise<{ url: string; source: ImageSource }> {
   const source = resolveImageSource(pref);
+  const credentials = await getAiCredentials();
 
   let blob: Blob;
   try {
-    blob = source === "ai" ? await fetchAiImageBytes(prompt) : await fetchStockImageBytes(prompt);
+    blob =
+      source === "ai"
+        ? await fetchAiImageBytes(
+            prompt,
+            credentials.pollinationsApiKey,
+            credentials.pollinationsImageModel
+          )
+        : await fetchStockImageBytes(prompt, credentials.pexelsApiKey);
   } catch (err) {
     // Fall back to the other free source rather than failing the whole generation.
     const fallbackSource: ImageSource = source === "ai" ? "stock" : "ai";
     try {
       blob =
         fallbackSource === "ai"
-          ? await fetchAiImageBytes(prompt)
-          : await fetchStockImageBytes(prompt);
+          ? await fetchAiImageBytes(
+              prompt,
+              credentials.pollinationsApiKey,
+              credentials.pollinationsImageModel
+            )
+          : await fetchStockImageBytes(prompt, credentials.pexelsApiKey);
       return await upload(blob, fallbackSource);
     } catch {
       throw err instanceof Error ? err : new Error("Não foi possível gerar a imagem");

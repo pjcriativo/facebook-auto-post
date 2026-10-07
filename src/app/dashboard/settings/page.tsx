@@ -658,7 +658,8 @@ function SettingsForm() {
       <Card>
         <h2 className="font-heading font-bold text-foreground">Preferências de geração</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Todas as fontes são gratuitas — nenhuma chave de API paga é obrigatória.
+          Escolha a fonte padrão aqui e gerencie chaves e modelos na aba{" "}
+          <Link href="/dashboard/apis" className="font-medium text-primary hover:underline">APIs</Link>.
         </p>
 
         <div className="mt-4">

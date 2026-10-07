@@ -30,10 +30,10 @@ export default function QueuePage() {
     try {
       const res = await fetch("/api/posts?status=draft,scheduled");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load the queue.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar a fila.");
       setPosts(data.posts ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load the queue.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar a fila.");
     } finally {
       setLoading(false);
     }
@@ -50,11 +50,11 @@ export default function QueuePage() {
       const res = await fetch(`/api/posts/${id}/post-now`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      if (data.post?.status === "failed") throw new Error(data.post.error_message ?? "Posting failed.");
+      if (data.post?.status === "failed") throw new Error(data.post.error_message ?? "A publicação falhou.");
       if (data.post?.facebook_post_id) setPublishedUrl(facebookPostUrl(data.post.facebook_post_id));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to post.");
+      setError(err instanceof Error ? err.message : "Não foi possível publicar.");
     } finally {
       setBusyId(null);
     }
@@ -86,7 +86,7 @@ export default function QueuePage() {
       setEditingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update.");
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar.");
     } finally {
       setBusyId(null);
     }
@@ -102,14 +102,14 @@ export default function QueuePage() {
 
       {publishedUrl && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          Published to Facebook 🎉
+          Publicado no Facebook 🎉
           <a
             href={publishedUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="font-semibold underline underline-offset-2"
           >
-            View post ↗
+            Ver post ↗
           </a>
         </div>
       )}
@@ -117,10 +117,10 @@ export default function QueuePage() {
       {!error && (
         <Card>
         {loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Carregando…</p>
         ) : posts.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            Nothing queued. Generate a post and save it as a draft or schedule it to see it here.
+            A fila está vazia. Crie um post e salve-o como rascunho ou agende-o para vê-lo aqui.
           </p>
         ) : (
           <div className="divide-y divide-border">
@@ -136,9 +136,9 @@ export default function QueuePage() {
                   </div>
                   <p className="mt-0.5 truncate text-sm text-muted-foreground">{post.description}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Page: {post.page_name ?? "—"}
+                    Página: {post.page_name ?? "—"}
                     {post.scheduled_at &&
-                      ` · Scheduled for ${new Date(post.scheduled_at).toLocaleString("en-US", {
+                      ` · Agendado para ${new Date(post.scheduled_at).toLocaleString("pt-BR", {
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
@@ -157,14 +157,14 @@ export default function QueuePage() {
                       <button
                         onClick={() => saveSchedule(post.id)}
                         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-success/10 text-success"
-                        aria-label="Save"
+                        aria-label="Salvar"
                       >
                         <Check size={15} />
                       </button>
                       <button
                         onClick={() => setEditingId(null)}
                         className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-surface-2 text-muted-foreground"
-                        aria-label="Cancel"
+                        aria-label="Cancelar"
                       >
                         <X size={15} />
                       </button>
@@ -181,12 +181,12 @@ export default function QueuePage() {
                       setDraftTime(toLocalInputValue(post.scheduled_at));
                     }}
                   >
-                    <PencilSimple size={14} /> Reschedule
+                    <PencilSimple size={14} /> Reagendar
                   </Button>
                   <Button size="sm" onClick={() => postNow(post.id)} disabled={busyId === post.id}>
-                    <Rocket size={14} weight="fill" /> {busyId === post.id ? "Posting…" : "Post now"}
+                    <Rocket size={14} weight="fill" /> {busyId === post.id ? "Publicando…" : "Publicar agora"}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove(post.id)} disabled={busyId === post.id}>
+                  <Button size="sm" variant="ghost" onClick={() => remove(post.id)} disabled={busyId === post.id} aria-label="Excluir post">
                     <Trash size={14} />
                   </Button>
                 </div>

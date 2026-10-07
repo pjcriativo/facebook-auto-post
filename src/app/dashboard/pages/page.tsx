@@ -27,11 +27,11 @@ export default function PagesPage() {
         setNotConnected(true);
         return;
       }
-      if (!res.ok) throw new Error(data.error ?? "Failed to load Pages.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar as Páginas.");
       setPages(data.pages ?? []);
       setDefaultId(data.defaultPageId ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load Pages.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar as Páginas.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -54,19 +54,19 @@ export default function PagesPage() {
     });
     if (!res.ok) {
       setDefaultId(null);
-      setError((await res.json()).error ?? "Couldn't set that Page as default.");
+      setError((await res.json()).error ?? "Não foi possível definir essa Página como padrão.");
     }
   }
 
   if (notConnected) {
     return (
       <Card className="py-10 text-center">
-        <p className="font-medium text-foreground">Facebook isn&apos;t connected yet</p>
+        <p className="font-medium text-foreground">O Facebook ainda não está conectado</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Connect your account to see the Pages you can post to.
+          Conecte sua conta para ver as Páginas em que você pode publicar.
         </p>
         <Link href="/dashboard/settings" className="mt-4 inline-block">
-          <Button size="sm">Go to Settings</Button>
+          <Button size="sm">Ir para configurações</Button>
         </Link>
       </Card>
     );
@@ -76,11 +76,11 @@ export default function PagesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Pick the Page new posts publish to. Only Pages you can create content on are listed.
+          Escolha a Página em que os novos posts serão publicados. Somente Páginas nas quais você pode criar conteúdo são exibidas.
         </p>
         <Button size="sm" variant="secondary" onClick={() => load(true)} disabled={refreshing}>
           <ArrowClockwise size={14} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing…" : "Refresh from Facebook"}
+          {refreshing ? "Atualizando…" : "Atualizar pelo Facebook"}
         </Button>
       </div>
 
@@ -92,10 +92,10 @@ export default function PagesPage() {
 
       <Card>
         {loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Carregando…</p>
         ) : pages.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted-foreground">
-            No Pages cached yet — click &quot;Refresh from Facebook&quot;.
+            Ainda não há Páginas em cache — clique em &quot;Atualizar pelo Facebook&quot;.
           </p>
         ) : (
           <div className="divide-y divide-border">
@@ -118,7 +118,7 @@ export default function PagesPage() {
                     onClick={() => setDefault(page)}
                   >
                     <Star size={14} weight={isDefault ? "fill" : "regular"} />
-                    {isDefault ? "Default" : "Set as default"}
+                    {isDefault ? "Padrão" : "Definir como padrão"}
                   </Button>
                 </div>
               );

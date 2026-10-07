@@ -4,20 +4,20 @@ import type { AppSettings } from "@/lib/types";
 
 export class FacebookNotConnectedError extends Error {
   constructor() {
-    super("Facebook is not connected. Connect it from Settings first.");
+    super("O Facebook não está conectado. Conecte-o primeiro em Configurações.");
   }
 }
 
 export class NoPageSelectedError extends Error {
   constructor() {
-    super("No Facebook Page selected. Choose one on the Pages screen first.");
+    super("Nenhuma Página do Facebook foi selecionada. Escolha uma na tela Páginas.");
   }
 }
 
 async function loadSettings(): Promise<AppSettings> {
   const db = supabaseAdmin();
   const { data } = await db.from("app_settings").select("*").eq("id", 1).single<AppSettings>();
-  if (!data) throw new Error("Settings row is missing.");
+  if (!data) throw new Error("A linha de configurações não foi encontrada.");
   return data;
 }
 
@@ -36,7 +36,7 @@ async function graph(path: string, params: Record<string, string>, init?: Reques
 
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.error) {
-    throw new Error(body?.error?.message ?? `Facebook API ${path} failed (${res.status})`);
+    throw new Error(body?.error?.message ?? `A API do Facebook falhou em ${path} (${res.status})`);
   }
   return body;
 }

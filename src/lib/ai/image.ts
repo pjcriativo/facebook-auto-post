@@ -29,12 +29,12 @@ async function fetchAiImageBytes(prompt: string): Promise<Blob> {
   )}?width=${WIDTH}&height=${HEIGHT}&nologo=true&seed=${Math.floor(Math.random() * 1_000_000)}`;
 
   const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`Pollinations image API ${res.status}`);
+  if (!res.ok) throw new Error(`A API de imagens do Pollinations respondeu com o status ${res.status}`);
   return res.blob();
 }
 
 async function fetchStockImageBytes(query: string): Promise<Blob> {
-  if (!env.pexelsApiKey) throw new Error("PEXELS_API_KEY is not configured");
+  if (!env.pexelsApiKey) throw new Error("A variável PEXELS_API_KEY não está configurada");
 
   const searchUrl = `https://api.pexels.com/v1/search?${new URLSearchParams({
     query,
@@ -45,16 +45,16 @@ async function fetchStockImageBytes(query: string): Promise<Blob> {
     headers: { Authorization: env.pexelsApiKey },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!searchRes.ok) throw new Error(`Pexels search failed (${searchRes.status})`);
+  if (!searchRes.ok) throw new Error(`A pesquisa no Pexels falhou (${searchRes.status})`);
   const data = await searchRes.json();
   const photos: Array<{ src: { large2x: string; large: string } }> = data.photos ?? [];
-  if (photos.length === 0) throw new Error("No stock photos found for this topic");
+  if (photos.length === 0) throw new Error("Nenhuma foto de banco de imagens foi encontrada para este tema");
 
   const chosen = photos[Math.floor(Math.random() * photos.length)];
   const imageRes = await fetch(chosen.src.large2x ?? chosen.src.large, {
     signal: AbortSignal.timeout(20_000),
   });
-  if (!imageRes.ok) throw new Error("Failed to download chosen stock photo");
+  if (!imageRes.ok) throw new Error("Não foi possível baixar a foto escolhida");
   return imageRes.blob();
 }
 
@@ -85,7 +85,7 @@ export async function generateImage(
           : await fetchStockImageBytes(prompt);
       return await upload(blob, fallbackSource);
     } catch {
-      throw err instanceof Error ? err : new Error("Image generation failed");
+      throw err instanceof Error ? err : new Error("Não foi possível gerar a imagem");
     }
   }
 
@@ -101,7 +101,7 @@ async function upload(blob: Blob, source: ImageSource): Promise<{ url: string; s
     contentType: blob.type || "image/jpeg",
     upsert: false,
   });
-  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  if (error) throw new Error(`Falha ao enviar para o armazenamento: ${error.message}`);
 
   const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, source };

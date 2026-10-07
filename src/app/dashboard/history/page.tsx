@@ -9,9 +9,9 @@ import { facebookPostUrl } from "@/lib/types";
 import type { Post, PostStatus } from "@/lib/types";
 
 const FILTERS: { label: string; value: PostStatus | "all" }[] = [
-  { label: "All", value: "all" },
-  { label: "Posted", value: "posted" },
-  { label: "Failed", value: "failed" },
+  { label: "Todos", value: "all" },
+  { label: "Publicados", value: "posted" },
+  { label: "Com falha", value: "failed" },
 ];
 
 export default function HistoryPage() {
@@ -26,10 +26,10 @@ export default function HistoryPage() {
     fetch(`/api/posts?status=${filter === "all" ? "posted,failed" : filter}`)
       .then(async (r) => {
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error ?? "Failed to load history.");
+        if (!r.ok) throw new Error(data.error ?? "Não foi possível carregar o histórico.");
         setPosts(data.posts ?? []);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load history."))
+      .catch((err) => setError(err instanceof Error ? err.message : "Não foi possível carregar o histórico."))
       .finally(() => setLoading(false));
   }, [filter]);
 
@@ -61,18 +61,18 @@ export default function HistoryPage() {
       {!error && (
       <Card>
         {loading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Loading…</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Carregando…</p>
         ) : posts.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">No posts here yet.</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Ainda não há posts aqui.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
                   <th className="pb-2 font-medium">Post</th>
-                  <th className="hidden pb-2 font-medium sm:table-cell">Page</th>
+                  <th className="hidden pb-2 font-medium sm:table-cell">Página</th>
                   <th className="pb-2 font-medium">Status</th>
-                  <th className="pb-2 font-medium">When</th>
+                  <th className="pb-2 font-medium">Data</th>
                   <th className="pb-2 font-medium" />
                 </tr>
               </thead>
@@ -98,7 +98,7 @@ export default function HistoryPage() {
                       <StatusBadge status={post.status} />
                     </td>
                     <td className="py-3 pr-3 text-xs text-muted-foreground">
-                      {new Date(post.posted_at ?? post.created_at).toLocaleString("en-US", {
+                      {new Date(post.posted_at ?? post.created_at).toLocaleString("pt-BR", {
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
@@ -113,7 +113,7 @@ export default function HistoryPage() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                         >
-                          View <ArrowSquareOut size={12} />
+                          Ver <ArrowSquareOut size={12} />
                         </a>
                       )}
                     </td>

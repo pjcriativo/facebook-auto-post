@@ -8,7 +8,7 @@ function required(name: string): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(
-      `Missing required environment variable: ${name}. Check .env.local (see .env.example).`
+      `Variável de ambiente obrigatória ausente: ${name}. Verifique o .env.local (consulte .env.example).`
     );
   }
   return value;

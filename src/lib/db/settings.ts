@@ -5,7 +5,7 @@ export async function getSettings(): Promise<AppSettings> {
   const db = supabaseAdmin();
   const { data, error } = await db.from("app_settings").select("*").eq("id", 1).single();
   if (error || !data) {
-    throw new Error(`Failed to load settings: ${error?.message ?? "no row"}`);
+    throw new Error(`Não foi possível carregar as configurações: ${error?.message ?? "linha inexistente"}`);
   }
   return data as AppSettings;
 }
@@ -19,7 +19,7 @@ export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSe
     .select()
     .single();
   if (error || !data) {
-    throw new Error(`Failed to update settings: ${error?.message ?? "no row"}`);
+    throw new Error(`Não foi possível atualizar as configurações: ${error?.message ?? "linha inexistente"}`);
   }
   return data as AppSettings;
 }

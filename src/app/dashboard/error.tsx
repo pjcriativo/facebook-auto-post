@@ -31,32 +31,32 @@ export default function DashboardError({
         <WarningCircle size={28} weight="bold" />
       </div>
       <h2 className="mt-4 font-heading text-lg font-bold text-foreground">
-        This page didn&apos;t load
+        Não foi possível carregar esta página
       </h2>
 
       {redacted ? (
         <div className="mt-2 text-sm text-muted-foreground">
           <p>
-            The server hit an error and the details are hidden in production builds. On a
-            new install it is nearly always the setup:
+            O servidor encontrou um erro e os detalhes ficam ocultos em produção. Em uma
+            instalação nova, a causa quase sempre está na configuração:
           </p>
           <ul className="mt-3 space-y-1.5 text-left">
             <li>
-              • <code className="rounded bg-surface-2 px-1 text-xs">supabase/schema.sql</code> has
-              not been run in the Supabase SQL editor
+              • <code className="rounded bg-surface-2 px-1 text-xs">supabase/schema.sql</code> ainda
+              não foi executado no SQL Editor do Supabase
             </li>
             <li>
               • <code className="rounded bg-surface-2 px-1 text-xs">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
               or{" "}
               <code className="rounded bg-surface-2 px-1 text-xs">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
-              is missing or wrong in Vercel — and needs a redeploy after changing
+              está ausente ou incorreto na Vercel — e exige um novo deploy após a alteração
             </li>
-            <li>• the Supabase project is paused</li>
+            <li>• o projeto Supabase está pausado</li>
           </ul>
           {error.digest && (
             <p className="mt-3 font-mono text-xs">
-              Error digest: {error.digest} — search your Vercel runtime logs for it to see
-              the real message.
+              Identificador do erro: {error.digest} — procure por ele nos logs da Vercel
+              para ver a mensagem completa.
             </p>
           )}
         </div>
@@ -66,11 +66,11 @@ export default function DashboardError({
 
       <div className="mt-5 flex gap-2">
         <Button onClick={reset} size="sm">
-          <ArrowClockwise size={14} /> Try again
+          <ArrowClockwise size={14} /> Tentar novamente
         </Button>
         <Link href="/dashboard/settings">
           <Button size="sm" variant="secondary">
-            Open Settings
+            Abrir configurações
           </Button>
         </Link>
       </div>

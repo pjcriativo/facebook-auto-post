@@ -25,28 +25,28 @@ const SOURCES: {
 }[] = [
   {
     value: "mine",
-    title: "Your topics",
-    body: "Works through your list, least recently used first. Falls back to trending ideas only while the list is empty.",
+    title: "Seus temas",
+    body: "Percorre sua lista, começando pelos menos usados recentemente. Usa ideias em alta somente enquanto a lista estiver vazia.",
     icon: ListBullets,
   },
   {
     value: "mixed",
-    title: "Mix of both",
-    body: "Roughly half from your list, half trending ideas.",
+    title: "Misturar os dois",
+    body: "Usa aproximadamente metade da sua lista e metade de ideias em alta.",
     icon: Shuffle,
   },
   {
     value: "trending",
-    title: "Trending ideas",
-    body: "Google Trends plus a built-in list of evergreen ideas. Your list is kept but not used.",
+    title: "Ideias em alta",
+    body: "Usa o Google Trends e uma lista interna de ideias atemporais. Sua lista fica salva, mas não é usada.",
     icon: TrendUp,
   },
 ];
 
-const PLACEHOLDER = `Instagram Reels ideas for small businesses
-How to plan a month of social media posts
-Mistakes brands make on Facebook ads
-Why consistency beats virality`;
+const PLACEHOLDER = `Ideias de Reels para pequenos negócios
+Como planejar um mês de posts para redes sociais
+Erros que marcas cometem em anúncios no Facebook
+Por que consistência é melhor que viralidade`;
 
 function relativeTime(iso: string): string {
   const seconds = (new Date(iso).getTime() - Date.now()) / 1000;
@@ -58,11 +58,11 @@ function relativeTime(iso: string): string {
     ["hour", 3600],
     ["minute", 60],
   ];
-  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
   for (const [unit, size] of units) {
     if (Math.abs(seconds) >= size) return rtf.format(Math.round(seconds / size), unit);
   }
-  return "just now";
+  return "agora mesmo";
 }
 
 export default function TopicsPage() {
@@ -85,13 +85,13 @@ export default function TopicsPage() {
     try {
       const res = await fetch("/api/topics");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't load your topics.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar seus temas.");
       setTopics(data.topics ?? []);
       setSource(data.source ?? "mine");
       setNextId(data.nextId ?? null);
       setUpgradeMessage(data.ready === false ? data.message : null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't load your topics.");
+      setError(err instanceof Error ? err.message : "Não foi possível carregar seus temas.");
     } finally {
       setLoading(false);
     }
@@ -119,15 +119,15 @@ export default function TopicsPage() {
         body: JSON.stringify({ texts: pendingLines }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't add those topics.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível adicionar esses temas.");
 
-      const parts = [`Added ${data.added} topic${data.added === 1 ? "" : "s"}`];
-      if (data.skipped) parts.push(`skipped ${data.skipped} already on your list`);
+      const parts = [`${data.added} tema${data.added === 1 ? " adicionado" : "s adicionados"}`];
+      if (data.skipped) parts.push(`${data.skipped} já existente${data.skipped === 1 ? " foi ignorado" : "s foram ignorados"}`);
       setNotice(parts.join(", ") + ".");
       setDraft("");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't add those topics.");
+      setError(err instanceof Error ? err.message : "Não foi possível adicionar esses temas.");
     } finally {
       setAdding(false);
     }
@@ -143,12 +143,12 @@ export default function TopicsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !topic.enabled }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Couldn't update that topic.");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Não foi possível atualizar esse tema.");
       // "Next up" can move when a topic is switched on or off.
       await load();
     } catch (err) {
       setTopics((list) => list.map((t) => (t.id === topic.id ? topic : t)));
-      setError(err instanceof Error ? err.message : "Couldn't update that topic.");
+      setError(err instanceof Error ? err.message : "Não foi possível atualizar esse tema.");
     } finally {
       setBusyId(null);
     }
@@ -159,11 +159,11 @@ export default function TopicsPage() {
     setError(null);
     try {
       const res = await fetch(`/api/topics/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Couldn't delete that topic.");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Não foi possível excluir esse tema.");
       setConfirmingId(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't delete that topic.");
+      setError(err instanceof Error ? err.message : "Não foi possível excluir esse tema.");
     } finally {
       setBusyId(null);
     }
@@ -181,17 +181,17 @@ export default function TopicsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic_source: value }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Couldn't save that choice.");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Não foi possível salvar essa escolha.");
     } catch (err) {
       setSource(previous);
-      setError(err instanceof Error ? err.message : "Couldn't save that choice.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar essa escolha.");
     } finally {
       setSavingSource(false);
     }
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="text-sm text-muted-foreground">Carregando…</p>;
   }
 
   if (upgradeMessage) {
@@ -203,17 +203,17 @@ export default function TopicsPage() {
               <WarningCircle size={22} weight="bold" />
             </div>
             <div>
-              <h2 className="font-heading font-bold text-foreground">One database step to enable topics</h2>
+              <h2 className="font-heading font-bold text-foreground">Falta uma etapa no banco para ativar os temas</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your database was created before topics existed. Open Supabase, go to{" "}
-                <strong>SQL Editor → New query</strong>, paste the whole of{" "}
-                <code className="rounded bg-surface-2 px-1 text-xs">supabase/schema.sql</code> from
-                your repository again, and click <strong>Run</strong>.
+                Seu banco foi criado antes do recurso de temas. Abra o Supabase, acesse{" "}
+                <strong>SQL Editor → New query</strong>, cole todo o arquivo{" "}
+                <code className="rounded bg-surface-2 px-1 text-xs">supabase/schema.sql</code> do
+                repositório novamente e clique em <strong>Run</strong>.
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                It is safe to re-run: it only adds what is missing and leaves your posts,
-                settings and connection untouched. Until then, autopilot keeps working with
-                trending ideas.
+                É seguro executar novamente: apenas o que estiver faltando será adicionado,
+                sem alterar posts, configurações ou conexão. Até lá, o piloto automático
+                continuará usando ideias em alta.
               </p>
             </div>
           </div>
@@ -236,12 +236,12 @@ export default function TopicsPage() {
 
       {/* Where autopilot's subjects come from */}
       <Card>
-        <h2 className="font-heading font-bold text-foreground">What autopilot writes about</h2>
+        <h2 className="font-heading font-bold text-foreground">Sobre o que o piloto automático escreve</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Each automatic post takes one subject. Pick where those come from.
+          Cada post automático usa um tema. Escolha de onde esses temas serão obtidos.
         </p>
 
-        <div role="radiogroup" aria-label="Topic source" className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div role="radiogroup" aria-label="Origem dos temas" className="mt-4 grid gap-3 sm:grid-cols-3">
           {SOURCES.map((option) => {
             const selected = option.value === source;
             const Icon = option.icon;
@@ -275,13 +275,12 @@ export default function TopicsPage() {
 
         {source !== "trending" && activeCount === 0 && (
           <p className="mt-3 text-xs text-warning">
-            Your list has no active topics, so autopilot is using trending ideas until you add some.
+            Sua lista não tem temas ativos, então o piloto automático usará ideias em alta até você adicionar algum.
           </p>
         )}
         {source === "trending" && activeCount > 0 && (
           <p className="mt-3 text-xs text-muted-foreground">
-            Your {activeCount} topic{activeCount === 1 ? " is" : "s are"} saved but not used while
-            this is set to trending ideas.
+            {activeCount === 1 ? "Seu tema está salvo" : `Seus ${activeCount} temas estão salvos`}, mas não será{activeCount === 1 ? "" : "ão"} usado{activeCount === 1 ? "" : "s"} enquanto esta opção estiver definida como ideias em alta.
           </p>
         )}
       </Card>
@@ -289,11 +288,11 @@ export default function TopicsPage() {
       {/* Add */}
       <Card>
         <label htmlFor="new-topics" className="font-heading font-bold text-foreground">
-          Add topics
+          Adicionar temas
         </label>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          One per line — a keyword or a full idea both work. Paste a whole list at once;
-          anything already on your list is skipped.
+          Insira um por linha — pode ser uma palavra-chave ou uma ideia completa. Cole uma
+          lista inteira de uma vez; itens que já estiverem na lista serão ignorados.
         </p>
         <textarea
           id="new-topics"
@@ -313,10 +312,10 @@ export default function TopicsPage() {
           <Button onClick={add} disabled={adding || pendingLines.length === 0}>
             <Plus size={16} weight="bold" />
             {adding
-              ? "Adding…"
+              ? "Adicionando…"
               : pendingLines.length > 1
-                ? `Add ${pendingLines.length} topics`
-                : "Add topic"}
+                ? `Adicionar ${pendingLines.length} temas`
+                : "Adicionar tema"}
           </Button>
           {notice && (
             <span role="status" className="flex items-center gap-1.5 text-sm text-success">
@@ -329,17 +328,17 @@ export default function TopicsPage() {
       {/* List */}
       <Card>
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-heading font-bold text-foreground">Your topics</h2>
+          <h2 className="font-heading font-bold text-foreground">Seus temas</h2>
           {topics.length > 0 && (
             <span className="text-xs text-muted-foreground">
-              {activeCount} of {topics.length} active
+              {activeCount} de {topics.length} ativo{activeCount === 1 ? "" : "s"}
             </span>
           )}
         </div>
 
         {topics.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No topics yet. Add a few above and autopilot will start writing about them.
+            Ainda não há temas. Adicione alguns acima para o piloto automático começar a usá-los.
           </p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
@@ -352,7 +351,7 @@ export default function TopicsPage() {
                     type="button"
                     role="switch"
                     aria-checked={topic.enabled}
-                    aria-label={`${topic.enabled ? "Pause" : "Use"} “${topic.text}”`}
+                    aria-label={`${topic.enabled ? "Pausar" : "Usar"} “${topic.text}”`}
                     disabled={busyId === topic.id}
                     onClick={() => toggle(topic)}
                     className={cn(
@@ -381,14 +380,14 @@ export default function TopicsPage() {
                       </p>
                       {isNext && (
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                          Next up
+                          Próximo
                         </span>
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {topic.use_count > 0 && topic.last_used_at
-                        ? `Used ${topic.use_count}× · last ${relativeTime(topic.last_used_at)}`
-                        : "Not used yet"}
+                        ? `Usado ${topic.use_count}× · última vez ${relativeTime(topic.last_used_at)}`
+                        : "Ainda não usado"}
                     </p>
                   </div>
 
@@ -401,18 +400,18 @@ export default function TopicsPage() {
                         disabled={busyId === topic.id}
                         className="text-destructive"
                       >
-                        Delete
+                        Excluir
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setConfirmingId(null)}>
-                        Cancel
+                        Cancelar
                       </Button>
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-1">
                       <Link
                         href={`/dashboard/generate?topic=${encodeURIComponent(topic.text)}`}
-                        aria-label={`Write a post about “${topic.text}” now`}
-                        title="Write a post about this now"
+                        aria-label={`Escrever agora um post sobre “${topic.text}”`}
+                        title="Escrever um post sobre este tema agora"
                         className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-primary"
                       >
                         <PencilSimpleLine size={17} />
@@ -420,8 +419,8 @@ export default function TopicsPage() {
                       <button
                         type="button"
                         onClick={() => setConfirmingId(topic.id)}
-                        aria-label={`Delete “${topic.text}”`}
-                        title="Delete"
+                        aria-label={`Excluir “${topic.text}”`}
+                        title="Excluir"
                         className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
                       >
                         <Trash size={17} />

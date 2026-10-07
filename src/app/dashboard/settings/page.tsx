@@ -19,6 +19,7 @@ import { cn } from "@/lib/cn";
 import type { ImageSourcePref } from "@/lib/types";
 
 const TIMEZONES = [
+  "America/Sao_Paulo",
   "Asia/Karachi",
   "Asia/Kolkata",
   "Asia/Dubai",
@@ -53,7 +54,7 @@ interface SettingsState {
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Carregando…</p>}>
       <SettingsForm />
     </Suspense>
   );
@@ -90,24 +91,24 @@ function SettingsForm() {
     fetch("/api/settings")
       .then(async (r) => {
         const data = await r.json();
-        if (!r.ok) throw new Error(data.error ?? "Failed to load settings.");
+        if (!r.ok) throw new Error(data.error ?? "Não foi possível carregar as configurações.");
         setSettings(data);
         setAppId(data.facebook_app_id ?? "");
         setConfigId(data.facebook_config_id ?? "");
       })
-      .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load settings."));
+      .catch((err) => setLoadError(err instanceof Error ? err.message : "Não foi possível carregar as configurações."));
   }, []);
 
   async function saveCredentials() {
     setCredsError(null);
     if (!appId.trim()) {
-      setCredsError("Enter the App ID from your Meta app.");
+      setCredsError("Informe o ID do Aplicativo da Meta.");
       return;
     }
     // An already-stored secret is left alone unless a new one is typed, so the
     // masked field does not have to round-trip the real value.
     if (!appSecret.trim() && !settings?.facebook_app_secret_set) {
-      setCredsError("Enter the App Secret from App settings > Basic.");
+      setCredsError("Informe a Chave Secreta em Configurações do aplicativo > Básico.");
       return;
     }
 
@@ -123,7 +124,7 @@ function SettingsForm() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't save those credentials.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar essas credenciais.");
 
       setAppSecret("");
       setSettings((s) =>
@@ -138,7 +139,7 @@ function SettingsForm() {
           : s
       );
     } catch (err) {
-      setCredsError(err instanceof Error ? err.message : "Couldn't save those credentials.");
+      setCredsError(err instanceof Error ? err.message : "Não foi possível salvar essas credenciais.");
     } finally {
       setSavingCreds(false);
     }
@@ -150,7 +151,7 @@ function SettingsForm() {
       setCopied(which);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      setCredsError("Copying failed — select the field and copy manually.");
+      setCredsError("Não foi possível copiar — selecione o campo e copie manualmente.");
     }
   }
 
@@ -197,19 +198,19 @@ function SettingsForm() {
   }
 
   if (!settings) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="text-sm text-muted-foreground">Carregando…</p>;
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       {oauthStatus === "connected" && (
         <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          <CheckCircle size={18} /> Facebook account connected.
+          <CheckCircle size={18} /> Conta do Facebook conectada.
         </div>
       )}
       {oauthStatus === "error" && (
         <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
-          <WarningCircle size={18} /> {oauthMessage ?? "Couldn't connect Facebook."}
+          <WarningCircle size={18} /> {oauthMessage ?? "Não foi possível conectar o Facebook."}
         </div>
       )}
 
@@ -221,24 +222,24 @@ function SettingsForm() {
               <FacebookLogo size={22} weight="fill" />
             </div>
             <div>
-              <h2 className="font-heading font-bold text-foreground">Facebook account</h2>
+              <h2 className="font-heading font-bold text-foreground">Conta do Facebook</h2>
               {settings.facebook_connected ? (
                 <p className="mt-0.5 text-sm text-success">
-                  Connected as {settings.facebook_user_name ?? "your account"}
+                  Conectado como {settings.facebook_user_name ?? "sua conta"}
                 </p>
               ) : settings.facebook_configured === false ? (
                 <p className="mt-0.5 max-w-md text-sm text-muted-foreground">
-                  Add your Meta App ID and secret below to enable connecting.
-                  Everything else works without them.
+                  Adicione abaixo o ID e a chave secreta do aplicativo Meta para ativar a conexão.
+                  Os demais recursos funcionam sem essas credenciais.
                 </p>
               ) : (
-                <p className="mt-0.5 text-sm text-muted-foreground">Not connected yet</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">Ainda não conectado</p>
               )}
             </div>
           </div>
           {settings.facebook_connected ? (
             <Button size="sm" variant="secondary" onClick={disconnect} disabled={disconnecting}>
-              <LinkBreak size={14} /> Disconnect
+              <LinkBreak size={14} /> Desconectar
             </Button>
           ) : (
             // A plain anchor on purpose: this route answers with a redirect to
@@ -251,7 +252,7 @@ function SettingsForm() {
               className={settings.facebook_configured === false ? "pointer-events-none" : undefined}
             >
               <Button size="sm" disabled={settings.facebook_configured === false}>
-                <LinkSimple size={14} /> Connect
+                <LinkSimple size={14} /> Conectar
               </Button>
             </a>
           )}
@@ -267,7 +268,7 @@ function SettingsForm() {
           <div className="min-w-0 flex-1">
             <h2 className="font-heading font-bold text-foreground">Meta app</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Create one at{" "}
+              Crie um em{" "}
               <a
                 href="https://developers.facebook.com/apps"
                 target="_blank"
@@ -276,14 +277,14 @@ function SettingsForm() {
               >
                 developers.facebook.com/apps
               </a>{" "}
-              with the <strong>&quot;Manage everything on your Page&quot;</strong> use case — not
-              the Facebook Login one, which Meta treats as incompatible with Page
-              management. Posting to a Page you administer needs no App Review.
+              usando o caso de uso <strong>&quot;Gerenciar tudo na sua Página&quot;</strong> — não
+              o Facebook Login comum, que a Meta considera incompatível com o gerenciamento de
+              Páginas. Publicar em uma Página administrada por você não exige análise do aplicativo.
             </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">App ID</label>
+                <label className="text-xs font-semibold text-muted-foreground">ID do Aplicativo</label>
                 <input
                   value={appId}
                   onChange={(e) => setAppId(e.target.value)}
@@ -292,13 +293,13 @@ function SettingsForm() {
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">App Secret</label>
+                <label className="text-xs font-semibold text-muted-foreground">Chave Secreta do Aplicativo</label>
                 <input
                   type="password"
                   value={appSecret}
                   onChange={(e) => setAppSecret(e.target.value)}
                   placeholder={
-                    settings.facebook_app_secret_set ? "•••• saved — type to replace" : "from App settings > Basic"
+                    settings.facebook_app_secret_set ? "•••• salva — digite para substituir" : "em Configurações do aplicativo > Básico"
                   }
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
@@ -307,25 +308,25 @@ function SettingsForm() {
 
             <div className="mt-3">
               <label className="text-xs font-semibold text-muted-foreground">
-                Login configuration ID
+                ID da configuração de login
               </label>
               <input
                 value={configId}
                 onChange={(e) => setConfigId(e.target.value)}
-                placeholder="required if your app uses Facebook Login for Business"
+                placeholder="obrigatório se o aplicativo usa o Facebook Login for Business"
                 className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                Apps created with the &quot;Manage everything on your Page&quot; use case use
-                Facebook Login for Business, where this replaces the permission list.
-                Find it under <strong>Facebook Login for Business → Configurations</strong>.
-                Leave blank for classic Facebook Login.
+                Aplicativos criados com o caso de uso &quot;Gerenciar tudo na sua Página&quot; usam o
+                Facebook Login for Business, no qual este ID substitui a lista de permissões.
+                Encontre-o em <strong>Facebook Login for Business → Configurações</strong>.
+                Deixe em branco para o Facebook Login clássico.
               </p>
             </div>
 
             <div className="mt-3">
               <label className="text-xs font-semibold text-muted-foreground">
-                Redirect URI — paste this into your Meta app&apos;s login settings, under Valid OAuth Redirect URIs
+                URI de redirecionamento — cole nas configurações de login da Meta, em URIs de redirecionamento OAuth válidos
               </label>
               <div className="mt-1 flex gap-2">
                 <input
@@ -336,14 +337,14 @@ function SettingsForm() {
                 />
                 <Button size="sm" variant="secondary" onClick={() => copyValue(redirectUri, "uri")}>
                   {copied === "uri" ? <Check size={14} /> : <Copy size={14} />}
-                  {copied === "uri" ? "Copied" : "Copy"}
+                  {copied === "uri" ? "Copiado" : "Copiar"}
                 </Button>
               </div>
             </div>
 
             <div className="mt-3">
               <label className="text-xs font-semibold text-muted-foreground">
-                App Domain — paste this into App settings &gt; Basic &gt; App Domains
+                Domínio do aplicativo — cole em Configurações do aplicativo &gt; Básico &gt; Domínios do aplicativo
               </label>
               <div className="mt-1 flex gap-2">
                 <input
@@ -354,14 +355,13 @@ function SettingsForm() {
                 />
                 <Button size="sm" variant="secondary" onClick={() => copyValue(appDomain, "domain")}>
                   {copied === "domain" ? <Check size={14} /> : <Copy size={14} />}
-                  {copied === "domain" ? "Copied" : "Copy"}
+                  {copied === "domain" ? "Copiado" : "Copiar"}
                 </Button>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Without this, Facebook refuses the login with
-                &quot;Can&apos;t load URL: the domain of this URL isn&apos;t included in the
-                app&apos;s domains&quot;. No <code className="rounded bg-surface-2 px-1 text-[11px]">https://</code>,
-                no trailing slash.
+                Sem isso, o Facebook recusará o login porque o domínio da URL não está incluído
+                nos domínios do aplicativo. Não use <code className="rounded bg-surface-2 px-1 text-[11px]">https://</code>{" "}
+                nem barra no final.
               </p>
             </div>
 
@@ -369,10 +369,10 @@ function SettingsForm() {
 
             <div className="mt-4 flex items-center gap-2">
               <Button size="sm" onClick={saveCredentials} disabled={savingCreds}>
-                {savingCreds ? "Saving…" : "Save credentials"}
+                {savingCreds ? "Salvando…" : "Salvar credenciais"}
               </Button>
               {settings.facebook_configured && (
-                <span className="text-xs font-medium text-success">Credentials stored</span>
+                <span className="text-xs font-medium text-success">Credenciais salvas</span>
               )}
             </div>
 
@@ -382,28 +382,28 @@ function SettingsForm() {
             {settings.facebook_app_id && (
               <div className="mt-4 border-t border-border pt-3">
                 <p className="text-xs font-semibold text-muted-foreground">
-                  Open in your Meta app
+                  Abrir no aplicativo Meta
                 </p>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5">
                   {[
                     {
-                      label: "Basic settings — App Domains",
+                      label: "Configurações básicas — Domínios",
                       href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/settings/basic/`,
                     },
                     {
-                      label: "Use cases — add permissions",
+                      label: "Casos de uso — adicionar permissões",
                       href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/use_cases/`,
                     },
                     {
-                      label: "Login settings — Redirect URIs",
+                      label: "Configurações de login — URIs de redirecionamento",
                       href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/fb-login/settings/`,
                     },
                     {
-                      label: "Login configurations",
+                      label: "Configurações de login",
                       href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/fb-login/configurations/`,
                     },
                     {
-                      label: "App dashboard",
+                      label: "Painel do aplicativo",
                       href: `https://developers.facebook.com/apps/${settings.facebook_app_id}/`,
                     },
                   ].map((link) => (
@@ -426,13 +426,13 @@ function SettingsForm() {
 
       {/* Generation preferences */}
       <Card>
-        <h2 className="font-heading font-bold text-foreground">Generation preferences</h2>
+        <h2 className="font-heading font-bold text-foreground">Preferências de geração</h2>
         <p className="mt-0.5 text-sm text-muted-foreground">
-          Every source here is free — no paid API keys required.
+          Todas as fontes são gratuitas — nenhuma chave de API paga é obrigatória.
         </p>
 
         <div className="mt-4">
-          <label className="text-xs font-semibold text-muted-foreground">Default image source</label>
+          <label className="text-xs font-semibold text-muted-foreground">Fonte de imagem padrão</label>
           <select
             value={settings.image_source}
             onChange={(e) => {
@@ -442,21 +442,21 @@ function SettingsForm() {
             }}
             className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary sm:w-64"
           >
-            <option value="ai">AI-generated image</option>
-            <option value="stock">Free stock photo</option>
-            <option value="mixed">Mix of both</option>
+            <option value="ai">Imagem gerada por IA</option>
+            <option value="stock">Foto gratuita de banco de imagens</option>
+            <option value="mixed">Combinar as duas opções</option>
           </select>
         </div>
 
         <div className="mt-4">
           <label className="text-xs font-semibold text-muted-foreground">
-            Text appended to every post (optional, e.g. a UTM link or sign-off)
+            Texto adicionado ao final de cada post (opcional, como um link UTM ou assinatura)
           </label>
           <input
             value={settings.utm_suffix}
             onChange={(e) => setSettings({ ...settings, utm_suffix: e.target.value })}
             onBlur={(e) => save({ utm_suffix: e.target.value })}
-            placeholder="via mysite.com"
+            placeholder="Acesse meusite.com.br"
             className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
           />
         </div>
@@ -466,22 +466,22 @@ function SettingsForm() {
       <Card>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="font-heading font-bold text-foreground">Autopilot</h2>
+            <h2 className="font-heading font-bold text-foreground">Piloto automático</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Let Facebook Auto Post pick a topic and post on its own, with no one clicking anything.
+              Deixe o Facebook Auto Post escolher um tema e publicar sozinho, sem intervenção manual.
             </p>
             <p className="mt-1.5 text-sm text-foreground">
-              Writing about:{" "}
+              Conteúdo sobre:{" "}
               <span className="font-semibold">
                 {settings.topic_source === "trending"
-                  ? "trending ideas"
+                  ? "ideias em alta"
                   : settings.topic_source === "mixed"
-                    ? "a mix of your topics and trending ideas"
-                    : "your topics"}
+                    ? "uma combinação dos seus temas e ideias em alta"
+                    : "seus temas"}
               </span>{" "}
               ·{" "}
               <Link href="/dashboard/topics" className="font-medium text-primary hover:underline">
-                Manage topics
+                Gerenciar temas
               </Link>
             </p>
           </div>
@@ -491,7 +491,7 @@ function SettingsForm() {
               setSettings({ ...settings, auto_post_enabled: next });
               save({ auto_post_enabled: next });
             }}
-            aria-label="Toggle autopilot"
+            aria-label="Ativar ou desativar o piloto automático"
             className={cn(
               "relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition",
               settings.auto_post_enabled ? "bg-primary" : "bg-surface-2"
@@ -508,13 +508,13 @@ function SettingsForm() {
 
         {!settings.default_page_name && (
           <p className="mt-3 text-xs text-warning">
-            Set a default Page on the Pages screen — autopilot needs one to post to.
+            Defina uma Página padrão na tela Páginas — o piloto automático precisa dela para publicar.
           </p>
         )}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Posts per day</label>
+            <label className="text-xs font-semibold text-muted-foreground">Posts por dia</label>
             <input
               type="number"
               min={1}
@@ -526,7 +526,7 @@ function SettingsForm() {
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Timezone</label>
+            <label className="text-xs font-semibold text-muted-foreground">Fuso horário</label>
             <select
               value={settings.timezone}
               onChange={(e) => {
@@ -546,7 +546,7 @@ function SettingsForm() {
 
         <div className="mt-4">
           <label className="text-xs font-semibold text-muted-foreground">
-            Allowed posting hours (local time)
+            Horários permitidos para publicação (hora local)
           </label>
           <div className="mt-1.5 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
             {Array.from({ length: 24 }, (_, h) => h).map((h) => (
@@ -568,7 +568,7 @@ function SettingsForm() {
       </Card>
 
       <div className="h-4 text-right text-xs text-muted-foreground">
-        {saving ? "Saving…" : saved ? "Saved ✓" : ""}
+        {saving ? "Salvando…" : saved ? "Salvo ✓" : ""}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { DashboardShell } from "@/components/dashboard/shell";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Painel",
   description: "Painel de controle do Facebook Auto Post.",
 };
 

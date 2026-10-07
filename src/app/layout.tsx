@@ -25,8 +25,8 @@ export const metadata: Metadata = {
   keywords: [
     "Facebook Auto Post",
     "automação facebook",
-    "facebook auto publish",
-    "social media automation",
+    "publicação automática no facebook",
+    "automação de redes sociais",
     "meta graph api",
     "facebook pages bot",
     "agendador de posts facebook",
@@ -70,7 +70,7 @@ const themeInitScript = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${jakarta.variable} ${inter.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="pt-BR" className={`${jakarta.variable} ${inter.variable} h-full antialiased`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

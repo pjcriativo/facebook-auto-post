@@ -32,12 +32,12 @@ function LoginForm() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? "Something went wrong.");
+        throw new Error(body.error ?? "Não foi possível entrar.");
       }
       router.push(params.get("next") || "/dashboard");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
       setLoading(false);
     }
   }
@@ -61,7 +61,7 @@ function LoginForm() {
         >
           <h1 className="font-heading text-xl font-bold text-foreground">Facebook Auto Post</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Digite o e-mail e a senha de administrador para acessar o dashboard.
+            Digite o e-mail e a senha de administrador para acessar o painel.
           </p>
           <label className="mt-6 block text-sm font-medium text-foreground" htmlFor="email">
             E-mail

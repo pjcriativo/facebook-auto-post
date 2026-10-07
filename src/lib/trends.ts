@@ -8,26 +8,26 @@
  */
 
 const EVERGREEN_TOPICS = [
-  "cozy home decor ideas",
-  "easy weeknight dinner recipes",
-  "capsule wardrobe outfits",
-  "small space organization hacks",
-  "budget travel destinations",
-  "DIY home improvement projects",
-  "healthy meal prep ideas",
-  "minimalist living room design",
-  "wedding decor inspiration",
-  "self care morning routine",
-  "indoor plant care tips",
-  "aesthetic workspace setup",
-  "quick hairstyles for work",
-  "backyard garden ideas",
-  "productivity planner layouts",
-  "fall fashion outfit ideas",
-  "birthday party decoration ideas",
-  "skincare routine for glowing skin",
-  "kids activities at home",
-  "home office decor ideas",
+  "ideias de decoração aconchegante para casa",
+  "receitas fáceis para o jantar durante a semana",
+  "looks com guarda-roupa cápsula",
+  "dicas de organização para espaços pequenos",
+  "destinos econômicos para viajar no Brasil",
+  "projetos faça você mesmo para renovar a casa",
+  "ideias saudáveis para preparar refeições",
+  "decoração minimalista para sala de estar",
+  "inspirações para decoração de casamento",
+  "rotina matinal de autocuidado",
+  "dicas para cuidar de plantas dentro de casa",
+  "como montar um espaço de trabalho bonito",
+  "penteados rápidos para trabalhar",
+  "ideias para jardim e quintal",
+  "modelos de planner para produtividade",
+  "ideias de looks para o outono",
+  "decoração para festa de aniversário",
+  "rotina de cuidados para uma pele saudável",
+  "atividades para fazer com crianças em casa",
+  "ideias de decoração para home office",
 ];
 
 export function pickEvergreenTopics(count = 8): string[] {
@@ -50,7 +50,7 @@ async function fetchGoogleTrends(geo: string): Promise<string[]> {
   return [...new Set(titles)];
 }
 
-export async function getTrendingTopics(geo = "US"): Promise<{ topics: string[]; source: "trends" | "evergreen" }> {
+export async function getTrendingTopics(geo = "BR"): Promise<{ topics: string[]; source: "trends" | "evergreen" }> {
   try {
     const topics = await fetchGoogleTrends(geo);
     if (topics.length >= 4) {

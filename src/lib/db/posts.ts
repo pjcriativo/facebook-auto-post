@@ -15,14 +15,14 @@ export async function listPosts(
   if (opts.limit) query = query.limit(opts.limit);
 
   const { data, error } = await query;
-  if (error) throw new Error(`Failed to list posts: ${error.message}`);
+  if (error) throw new Error(`Não foi possível listar os posts: ${error.message}`);
   return (data ?? []) as Post[];
 }
 
 export async function getPost(id: string): Promise<Post | null> {
   const db = supabaseAdmin();
   const { data, error } = await db.from("posts").select("*").eq("id", id).maybeSingle();
-  if (error) throw new Error(`Failed to load post: ${error.message}`);
+  if (error) throw new Error(`Não foi possível carregar o post: ${error.message}`);
   return data as Post | null;
 }
 
@@ -36,21 +36,21 @@ export async function createPostRecord(
 ): Promise<Post> {
   const db = supabaseAdmin();
   const { data, error } = await db.from("posts").insert(input).select().single();
-  if (error) throw new Error(`Failed to create post: ${error.message}`);
+  if (error) throw new Error(`Não foi possível criar o post: ${error.message}`);
   return data as Post;
 }
 
 export async function updatePostRecord(id: string, patch: Partial<Post>): Promise<Post> {
   const db = supabaseAdmin();
   const { data, error } = await db.from("posts").update(patch).eq("id", id).select().single();
-  if (error) throw new Error(`Failed to update post: ${error.message}`);
+  if (error) throw new Error(`Não foi possível atualizar o post: ${error.message}`);
   return data as Post;
 }
 
 export async function deletePostRecord(id: string): Promise<void> {
   const db = supabaseAdmin();
   const { error } = await db.from("posts").delete().eq("id", id);
-  if (error) throw new Error(`Failed to delete post: ${error.message}`);
+  if (error) throw new Error(`Não foi possível excluir o post: ${error.message}`);
 }
 
 /** Scheduled posts whose time has come, oldest first — used by the cron worker. */
@@ -63,6 +63,6 @@ export async function listDuePosts(nowIso: string): Promise<Post[]> {
     .lte("scheduled_at", nowIso)
     .order("scheduled_at", { ascending: true })
     .limit(20);
-  if (error) throw new Error(`Failed to list due posts: ${error.message}`);
+  if (error) throw new Error(`Não foi possível listar os posts vencidos: ${error.message}`);
   return (data ?? []) as Post[];
 }

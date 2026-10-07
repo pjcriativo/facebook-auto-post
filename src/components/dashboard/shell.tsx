@@ -21,23 +21,23 @@ import { Logo } from "@/components/logo";
 import { cn } from "@/lib/cn";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview", icon: House },
-  { href: "/dashboard/generate", label: "Generate", icon: MagicWand },
-  { href: "/dashboard/topics", label: "Topics", icon: Lightbulb },
-  { href: "/dashboard/queue", label: "Queue", icon: ClockCountdown },
-  { href: "/dashboard/history", label: "History", icon: ListChecks },
-  { href: "/dashboard/pages", label: "Pages", icon: FlagBanner },
-  { href: "/dashboard/settings", label: "Settings", icon: GearSix },
+  { href: "/dashboard", label: "Visão geral", icon: House },
+  { href: "/dashboard/generate", label: "Criar post", icon: MagicWand },
+  { href: "/dashboard/topics", label: "Temas", icon: Lightbulb },
+  { href: "/dashboard/queue", label: "Fila", icon: ClockCountdown },
+  { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
+  { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
 ];
 
 const TITLES: Record<string, string> = {
-  "/dashboard": "Overview",
-  "/dashboard/generate": "Generate a post",
-  "/dashboard/topics": "Topics",
-  "/dashboard/queue": "Queue",
-  "/dashboard/history": "History",
-  "/dashboard/pages": "Pages",
-  "/dashboard/settings": "Settings",
+  "/dashboard": "Visão geral",
+  "/dashboard/generate": "Criar post",
+  "/dashboard/topics": "Temas",
+  "/dashboard/queue": "Fila",
+  "/dashboard/history": "Histórico",
+  "/dashboard/pages": "Páginas",
+  "/dashboard/settings": "Configurações",
 };
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -70,7 +70,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <Logo className="[&>span]:text-base" />
               <button
                 onClick={() => setMobileOpen(false)}
-                aria-label="Close menu"
+                aria-label="Fechar menu"
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2"
               >
                 <X size={18} />
@@ -106,7 +106,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
+              aria-label="Abrir menu"
               className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-surface-2 lg:hidden"
             >
               <List size={19} />
@@ -118,11 +118,11 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <ThemeToggle />
             <button
               onClick={logout}
-              aria-label="Sign out"
+              aria-label="Sair"
               className="flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
             >
               <SignOut size={16} />
-              <span className="hidden sm:inline">Sign out</span>
+              <span className="hidden sm:inline">Sair</span>
             </button>
           </div>
         </header>

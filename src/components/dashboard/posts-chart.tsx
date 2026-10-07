@@ -36,7 +36,7 @@ export function PostsChart({ data }: { data: { date: string; label: string; coun
             color: "var(--color-foreground)",
           }}
           labelFormatter={(label) => label}
-          formatter={(value) => [`${value} pin${value === 1 ? "" : "s"}`, "Posted"]}
+          formatter={(value) => [`${value} post${value === 1 ? "" : "s"}`, "Publicados"]}
         />
         <Area
           type="monotone"

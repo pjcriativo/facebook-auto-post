@@ -10,7 +10,7 @@ import type { Topic } from "@/lib/types";
 export class TopicsTableMissingError extends Error {
   constructor() {
     super(
-      "Your database has no topics table yet. Run supabase/schema.sql again in the Supabase SQL editor — it is safe to re-run and only adds what is missing."
+      "Seu banco ainda não possui a tabela de temas. Execute supabase/schema.sql novamente no SQL Editor do Supabase — é seguro executar de novo e somente o que estiver faltando será adicionado."
     );
   }
 }
@@ -21,7 +21,7 @@ const MISSING_TABLE = new Set(["PGRST205", "42P01"]);
 function raise(error: { code?: string; message: string } | null, action: string): void {
   if (!error) return;
   if (error.code && MISSING_TABLE.has(error.code)) throw new TopicsTableMissingError();
-  throw new Error(`Failed to ${action}: ${error.message}`);
+  throw new Error(`Não foi possível ${action}: ${error.message}`);
 }
 
 export const MAX_TOPIC_LENGTH = 200;
@@ -40,7 +40,7 @@ export async function listTopics(): Promise<Topic[]> {
     .from("topics")
     .select("*")
     .order("created_at", { ascending: true });
-  raise(error, "list topics");
+  raise(error, "listar os temas");
   return (data ?? []) as Topic[];
 }
 
@@ -70,7 +70,7 @@ export async function addTopics(rawTexts: string[]): Promise<{ added: number; sk
     const { error } = await supabaseAdmin()
       .from("topics")
       .insert(fresh.map((text) => ({ text })));
-    raise(error, "add topics");
+    raise(error, "adicionar os temas");
   }
 
   return { added: fresh.length, skipped };
@@ -86,13 +86,13 @@ export async function updateTopic(
     .eq("id", id)
     .select()
     .single();
-  raise(error, "update topic");
+  raise(error, "atualizar o tema");
   return data as Topic;
 }
 
 export async function deleteTopic(id: string): Promise<void> {
   const { error } = await supabaseAdmin().from("topics").delete().eq("id", id);
-  raise(error, "delete topic");
+  raise(error, "excluir o tema");
 }
 
 /**
@@ -109,7 +109,7 @@ export async function nextTopic(): Promise<Topic | null> {
     .order("last_used_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(1);
-  raise(error, "choose a topic");
+  raise(error, "escolher um tema");
   return ((data ?? [])[0] as Topic | undefined) ?? null;
 }
 
@@ -118,5 +118,5 @@ export async function markTopicUsed(topic: Topic): Promise<void> {
     .from("topics")
     .update({ use_count: topic.use_count + 1, last_used_at: new Date().toISOString() })
     .eq("id", topic.id);
-  raise(error, "record topic use");
+  raise(error, "registrar o uso do tema");
 }

@@ -67,11 +67,11 @@ function json(body: unknown, status = 200) {
 }
 
 function notFound() {
-  return json({ error: "Not found." }, 404);
+  return json({ error: "Não encontrado." }, 404);
 }
 
 function unauthorized() {
-  return json({ error: "Unauthorized." }, 401);
+  return json({ error: "Não autorizado." }, 401);
 }
 
 /**
@@ -118,7 +118,7 @@ async function safely(handler: () => Promise<Response>): Promise<Response> {
     return await handler();
   } catch (err) {
     console.error(err);
-    return json({ error: err instanceof Error ? err.message : "Unexpected server error." }, 500);
+    return json({ error: err instanceof Error ? err.message : "Erro inesperado no servidor." }, 500);
   }
 }
 
@@ -189,7 +189,7 @@ export async function GET(req: Request, ctx: Ctx) {
         return redirectToSettings(
           url.origin,
           "error",
-          "Add your Meta App ID and App Secret in Settings first, then try connecting again."
+          "Adicione primeiro o ID e a Chave Secreta do aplicativo Meta nas Configurações e tente conectar novamente."
         );
       }
 
@@ -293,28 +293,28 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "A topic (2-200 characters) is required." }, 400);
+      if (!parsed.success) return json({ error: "Informe um tema com 2 a 200 caracteres." }, 400);
       return json(await generateContent(parsed.data.topic));
     }
 
     if (route === "generate/image") {
       const parsed = ImageBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "A prompt and image source are required." }, 400);
+      if (!parsed.success) return json({ error: "Informe uma descrição e a fonte da imagem." }, 400);
       try {
         return json(await generateImage(parsed.data.prompt, parsed.data.source));
       } catch (err) {
-        return json({ error: err instanceof Error ? err.message : "Image generation failed." }, 502);
+        return json({ error: err instanceof Error ? err.message : "Não foi possível gerar a imagem." }, 502);
       }
     }
 
     if (route === "posts") {
       const parsed = CreatePostBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) {
-        return json({ error: parsed.error.issues[0]?.message ?? "Invalid post." }, 400);
+        return json({ error: parsed.error.issues[0]?.message ?? "Post inválido." }, 400);
       }
       const b = parsed.data;
       if (b.action === "schedule" && !b.scheduledAt) {
-        return json({ error: "scheduledAt is required to schedule a post." }, 400);
+        return json({ error: "A data e o horário são obrigatórios para agendar um post." }, 400);
       }
 
       const post = await createPostRecord({
@@ -339,7 +339,7 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (route === "topics") {
       const parsed = AddTopicsBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "Send at least one topic." }, 400);
+      if (!parsed.success) return json({ error: "Envie pelo menos um tema." }, 400);
       try {
         return json(await addTopics(parsed.data.texts));
       } catch (err) {
@@ -353,19 +353,19 @@ export async function POST(req: Request, ctx: Ctx) {
       try {
         return json({ post: await publishPostNow(path[1]) });
       } catch (err) {
-        return json({ error: err instanceof Error ? err.message : "Failed to publish." }, 502);
+        return json({ error: err instanceof Error ? err.message : "Não foi possível publicar." }, 502);
       }
     }
 
     if (route === "facebook/default-page") {
       const parsed = DefaultPageBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "pageId is required." }, 400);
+      if (!parsed.success) return json({ error: "O ID da Página é obrigatório." }, 400);
 
       // The Page token is fetched fresh rather than taken from the client, so
       // a token never has to travel to the browser and back.
       try {
         const page = (await fetchPages()).find((p) => p.id === parsed.data.pageId);
-        if (!page) return json({ error: "That Page is not available on this account." }, 404);
+        if (!page) return json({ error: "Essa Página não está disponível nesta conta." }, 404);
 
         await updateSettings({
           default_page_id: page.id,
@@ -382,12 +382,12 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "facebook/credentials") {
       const parsed = CredentialsBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) {
-        return json({ error: "Enter a valid App ID, and an App Secret of at least 10 characters." }, 400);
+        return json({ error: "Informe um ID de Aplicativo válido e uma Chave Secreta com pelo menos 10 caracteres." }, 400);
       }
 
       const existing = await getSettings();
       if (!parsed.data.appSecret && !existing.facebook_app_secret) {
-        return json({ error: "An App Secret is required the first time." }, 400);
+        return json({ error: "A Chave Secreta do Aplicativo é obrigatória na primeira configuração." }, 400);
       }
 
       await updateSettings({
@@ -465,7 +465,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
     if (route === "settings") {
       const parsed = SettingsBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "Invalid settings payload." }, 400);
+      if (!parsed.success) return json({ error: "Dados de configuração inválidos." }, 400);
       try {
         return json(await publicSettings(await updateSettings(parsed.data)));
       } catch (err) {
@@ -481,7 +481,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
     // topics/<id>
     if (path.length === 2 && path[0] === "topics") {
       const parsed = UpdateTopicBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "Invalid topic update." }, 400);
+      if (!parsed.success) return json({ error: "Atualização de tema inválida." }, 400);
       return json({ topic: await updateTopic(path[1], parsed.data) });
     }
 
@@ -489,13 +489,13 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (path.length === 2 && path[0] === "posts") {
       const id = path[1];
       const existing = await getPost(id);
-      if (!existing) return json({ error: "Post not found." }, 404);
+      if (!existing) return json({ error: "Post não encontrado." }, 404);
       if (existing.status === "posted") {
-        return json({ error: "A published post can no longer be edited here." }, 409);
+        return json({ error: "Um post já publicado não pode mais ser editado aqui." }, 409);
       }
 
       const parsed = UpdatePostBody.safeParse(await req.json().catch(() => null));
-      if (!parsed.success) return json({ error: "Invalid update payload." }, 400);
+      if (!parsed.success) return json({ error: "Dados de atualização inválidos." }, 400);
       const b = parsed.data;
 
       const updated = await updatePostRecord(id, {
@@ -560,7 +560,7 @@ async function getPages(refresh: boolean) {
     return json({ pages: cached ?? [], defaultPageId: settings.default_page_id });
   } catch (err) {
     if (err instanceof FacebookNotConnectedError) return json({ error: err.message }, 409);
-    return json({ error: err instanceof Error ? err.message : "Failed to load Pages." }, 502);
+    return json({ error: err instanceof Error ? err.message : "Não foi possível carregar as Páginas." }, 502);
   }
 }
 
@@ -668,7 +668,7 @@ async function runCron(req: Request, url: URL) {
     const auth = req.headers.get("authorization");
     const provided = url.searchParams.get("secret");
     if (auth !== `Bearer ${env.cronSecret}` && provided !== env.cronSecret) {
-      return json({ error: "Unauthorized" }, 401);
+      return json({ error: "Não autorizado" }, 401);
     }
   }
 

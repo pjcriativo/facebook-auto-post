@@ -57,7 +57,7 @@ async function graphGet(path: string, params: Record<string, string>) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok || body?.error) {
-    throw new Error(body?.error?.message ?? `Facebook request to ${path} failed (${res.status})`);
+    throw new Error(body?.error?.message ?? `A solicitação ao Facebook em ${path} falhou (${res.status})`);
   }
   return body;
 }

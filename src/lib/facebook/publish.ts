@@ -11,7 +11,7 @@ import type { Post } from "@/lib/types";
  */
 export async function publishPostNow(postId: string): Promise<Post> {
   const post = await getPost(postId);
-  if (!post) throw new Error("Post not found.");
+  if (!post) throw new Error("Post não encontrado.");
 
   const settings = await getSettings();
 
@@ -43,16 +43,16 @@ export async function publishPostNow(postId: string): Promise<Post> {
       error_message: null,
     });
   } catch (err) {
-    let message = err instanceof Error ? err.message : "Unknown error while posting.";
+    let message = err instanceof Error ? err.message : "Erro desconhecido durante a publicação.";
 
     // Facebook reports a token that lacks pages_manage_posts as a bare
     // "(#200) Permissions error", which says nothing about what to fix.
     if (/\(#200\)|permissions? error/i.test(message)) {
       message =
-        "Facebook rejected this for missing permissions. The connected token needs " +
-        "pages_manage_posts. Add it to your Meta app — and to the Login for Business " +
-        "configuration if you use one — then disconnect and connect again so a new " +
-        "token is issued.";
+        "O Facebook rejeitou a publicação por falta de permissões. O token conectado precisa de " +
+        "pages_manage_posts. Adicione essa permissão ao aplicativo Meta e também à configuração " +
+        "do Login for Business, se estiver usando uma. Depois, desconecte e conecte novamente " +
+        "para emitir um novo token.";
     }
 
     return await updatePostRecord(postId, { status: "failed", error_message: message });

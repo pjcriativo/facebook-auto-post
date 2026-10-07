@@ -9,10 +9,10 @@ const STATUS_STYLES: Record<PostStatus, string> = {
 };
 
 const STATUS_LABEL: Record<PostStatus, string> = {
-  draft: "Draft",
-  scheduled: "Scheduled",
-  posted: "Posted",
-  failed: "Failed",
+  draft: "Rascunho",
+  scheduled: "Agendado",
+  posted: "Publicado",
+  failed: "Falhou",
 };
 
 export function StatusBadge({ status }: { status: PostStatus }) {

@@ -15,31 +15,32 @@ import type { ContentProvider, GeneratedContent } from "@/lib/types";
  * honest warning.
  */
 
-const SYSTEM_PROMPT = `You are an expert Facebook Page copywriter. Given a topic, write a single
-high-performing Facebook photo post in strict JSON with this exact shape and nothing else:
+const SYSTEM_PROMPT = `Você é um redator especialista em conteúdo para Páginas do Facebook no Brasil.
+Dado um tema, escreva um único post de alto desempenho, obrigatoriamente em português do Brasil,
+em JSON estrito com este formato exato e sem nenhum outro conteúdo:
 {"title": string, "description": string, "hashtags": string[]}
 
-The three parts are joined into one caption, in that order, so they must read as
-one post rather than three fragments.
+As três partes serão unidas em uma única legenda, nessa ordem, e devem formar um texto coeso.
 
-Rules:
-- title: the opening hook, <= 80 characters. Conversational, scroll-stopping, specific. At most one emoji. No hashtags.
-- description: 2-4 short sentences, <= 400 characters, written to be read on a phone. Plain language, no marketing cliches. End with a question or a soft call to action that invites comments, since engagement drives Facebook reach.
-- hashtags: 3 to 5 short, highly relevant hashtags, lowercase, no "#" symbol, no spaces. Facebook rewards a few precise tags, not a wall of them.
-- Output ONLY the JSON object. No markdown fences, no commentary.`;
+Regras:
+- title: chamada inicial com até 80 caracteres. Tom natural, envolvente e específico. No máximo um emoji. Sem hashtags.
+- description: de 2 a 4 frases curtas e até 400 caracteres, fáceis de ler no celular. Use linguagem brasileira natural, sem clichês de marketing. Termine com uma pergunta ou convite sutil para comentários.
+- hashtags: de 3 a 5 hashtags curtas e relevantes, em minúsculas, sem o símbolo "#" e sem espaços.
+- Use ortografia, vocabulário e expressões naturais do português brasileiro. Não use português europeu.
+- Retorne SOMENTE o objeto JSON. Não use blocos Markdown nem comentários.`;
 
 const TIMEOUT_MS = 20_000;
 
 function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) throw new Error("No JSON object in response");
+  if (start === -1 || end === -1 || end <= start) throw new Error("A resposta não contém um objeto JSON");
   return JSON.parse(text.slice(start, end + 1));
 }
 
 function parseContent(raw: string): GeneratedContent {
   const parsed = extractJson(raw);
-  if (!parsed || typeof parsed !== "object") throw new Error("Malformed generation payload");
+  if (!parsed || typeof parsed !== "object") throw new Error("A resposta da geração está malformada");
   const o = parsed as Record<string, unknown>;
   if (
     typeof o.title !== "string" ||
@@ -47,7 +48,7 @@ function parseContent(raw: string): GeneratedContent {
     !Array.isArray(o.hashtags) ||
     !o.hashtags.every((h) => typeof h === "string")
   ) {
-    throw new Error("Malformed generation payload");
+    throw new Error("A resposta da geração está malformada");
   }
   return {
     title: o.title.trim(),
@@ -74,7 +75,7 @@ async function chatCompletion(
       temperature: 0.9,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `Topic: ${topic}` },
+        { role: "user", content: `Tema: ${topic}` },
       ],
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -82,18 +83,18 @@ async function chatCompletion(
 
   const host = new URL(url).host;
   const body = await res.text();
-  if (!res.ok) throw new Error(`${host} responded ${res.status}`);
+  if (!res.ok) throw new Error(`${host} respondeu com o status ${res.status}`);
 
   const data = JSON.parse(body);
   // Pollinations returns quota errors with a 200 status, so the body has to be
   // inspected rather than trusting res.ok.
   if (data?.error) {
     const message = typeof data.error === "string" ? data.error : data.error?.message;
-    throw new Error(`${host}: ${message ?? "unknown error"}`);
+    throw new Error(`${host}: ${message ?? "erro desconhecido"}`);
   }
 
   const content: unknown = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) throw new Error("Empty completion");
+  if (typeof content !== "string" || !content.trim()) throw new Error("A geração retornou vazia");
   return content;
 }
 
@@ -105,17 +106,17 @@ async function geminiCompletion(topic: string, apiKey: string): Promise<string> 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: `Topic: ${topic}` }] }],
+        contents: [{ role: "user", parts: [{ text: `Tema: ${topic}` }] }],
         generationConfig: { temperature: 0.9, responseMimeType: "application/json" },
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     }
   );
 
-  if (!res.ok) throw new Error(`gemini responded ${res.status}`);
+  if (!res.ok) throw new Error(`O Gemini respondeu com o status ${res.status}`);
   const data = await res.json();
   const content: unknown = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof content !== "string" || !content.trim()) throw new Error("Empty completion");
+  if (typeof content !== "string" || !content.trim()) throw new Error("A geração retornou vazia");
   return content;
 }
 
@@ -123,9 +124,9 @@ function template(topic: string): GeneratedContent {
   const clean = topic.trim();
   const words = clean.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
   return {
-    title: `${clean} — worth a look today`,
-    description: `We put together a few ideas around ${clean.toLowerCase()}. Simple things you can actually try this week. Which one would you start with?`,
-    hashtags: [...new Set(words)].concat(["ideas"]).slice(0, 5),
+    title: `${clean} — vale a pena conferir`,
+    description: `Reunimos algumas ideias sobre ${clean.toLowerCase()}. São sugestões simples que você pode colocar em prática nesta semana. Por qual delas você começaria?`,
+    hashtags: [...new Set(words)].concat(["ideias"]).slice(0, 5),
   };
 }
 

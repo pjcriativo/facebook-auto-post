@@ -85,7 +85,7 @@ export default function GeneratePage() {
 
   async function generate() {
     if (topic.trim().length < 2) {
-      setError("Enter a topic first — at least a couple of words.");
+      setError("Informe primeiro um tema com pelo menos algumas palavras.");
       return;
     }
     setError(null);
@@ -109,8 +109,8 @@ export default function GeneratePage() {
         }),
       ]);
 
-      if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Content generation failed.");
-      if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Image generation failed.");
+      if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Não foi possível gerar o conteúdo.");
+      if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
 
       const contentData: GeneratedContent = await contentRes.json();
       const imageData: { url: string; source: ImageSource } = await imageRes.json();
@@ -119,7 +119,7 @@ export default function GeneratePage() {
       setImage(imageData);
       setStep("ready");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError(err instanceof Error ? err.message : "Algo deu errado.");
       setStep("idle");
     }
   }
@@ -139,11 +139,11 @@ export default function GeneratePage() {
   async function save(action: "draft" | "schedule" | "post_now") {
     if (!content || !image) return;
     if (action !== "draft" && !pageId) {
-      setError("Choose a Page before scheduling or posting.");
+      setError("Escolha uma Página antes de agendar ou publicar.");
       return;
     }
     if (action === "schedule" && !scheduledAt) {
-      setError("Pick a date and time to schedule this post.");
+      setError("Escolha uma data e um horário para agendar este post.");
       return;
     }
 
@@ -161,25 +161,25 @@ export default function GeneratePage() {
           imageUrl: image.url,
           imageSource: image.source,
           linkUrl: linkUrl || undefined,
-          pageId: pageId || selectedPage?.page_id || "unset",
-          pageName: selectedPage?.name ?? "Unset",
+          pageId: pageId || selectedPage?.page_id || "não definido",
+          pageName: selectedPage?.name ?? "Não definida",
           action,
           scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to save post.");
+      if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar o post.");
 
       if (action === "post_now" && data.post.status === "failed") {
-        throw new Error(data.post.error_message ?? "Facebook rejected this post.");
+        throw new Error(data.post.error_message ?? "O Facebook rejeitou este post.");
       }
 
       setSuccess(
         action === "draft"
-          ? "Saved as a draft."
+          ? "Salvo como rascunho."
           : action === "schedule"
-            ? "Post scheduled."
-            : "Published to Facebook 🎉"
+            ? "Post agendado."
+            : "Publicado no Facebook 🎉"
       );
       setPublishedUrl(
         action === "post_now" && data.post.facebook_post_id
@@ -192,7 +192,7 @@ export default function GeneratePage() {
       setTopic("");
       setScheduleOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save post.");
+      setError(err instanceof Error ? err.message : "Não foi possível salvar o post.");
     } finally {
       setSaving(null);
     }
@@ -201,37 +201,37 @@ export default function GeneratePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <Card>
-        <label className="text-sm font-semibold text-foreground">Topic</label>
+        <label className="text-sm font-semibold text-foreground">Tema</label>
         <p className="mt-1 text-sm text-muted-foreground">
-          What should this post be about? Be specific for better results.
+          Sobre o que será este post? Seja específico para obter resultados melhores.
         </p>
         <div className="mt-3 flex flex-col gap-3 sm:flex-row">
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && generate()}
-            placeholder="e.g. cozy fall living room decor ideas"
+            placeholder="Ex.: ideias de decoração aconchegante para sala"
             className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
           />
           <select
             value={imagePref}
             onChange={(e) => setImagePref(e.target.value as ImageSourcePref)}
             className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
-            aria-label="Image source"
+            aria-label="Fonte da imagem"
           >
-            <option value="ai">AI-generated image</option>
-            <option value="stock">Free stock photo</option>
-            <option value="mixed">Mix of both</option>
+            <option value="ai">Imagem gerada por IA</option>
+            <option value="stock">Foto gratuita de banco de imagens</option>
+            <option value="mixed">Combinar as duas opções</option>
           </select>
           <Button onClick={generate} disabled={step === "generating"}>
             <Sparkle size={16} weight="fill" />
-            {step === "generating" ? "Generating…" : "Generate"}
+            {step === "generating" ? "Gerando…" : "Gerar"}
           </Button>
         </div>
 
         {ownTopics.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="mt-1 text-xs font-medium text-muted-foreground">Your topics:</span>
+            <span className="mt-1 text-xs font-medium text-muted-foreground">Seus temas:</span>
             {ownTopics.slice(0, 10).map((t) => (
               <button
                 key={t}
@@ -245,14 +245,14 @@ export default function GeneratePage() {
               href="/dashboard/topics"
               className="mt-0.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
             >
-              Manage
+              Gerenciar
             </Link>
           </div>
         )}
 
         {suggestions.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="mt-1 text-xs font-medium text-muted-foreground">Trending ideas:</span>
+            <span className="mt-1 text-xs font-medium text-muted-foreground">Ideias em alta:</span>
             {suggestions.slice(0, 8).map((s) => (
               <button
                 key={s}
@@ -283,7 +283,7 @@ export default function GeneratePage() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 font-semibold underline underline-offset-2"
             >
-              View post <ArrowSquareOut size={13} />
+              Ver post <ArrowSquareOut size={13} />
             </a>
           )}
         </div>
@@ -311,12 +311,12 @@ export default function GeneratePage() {
                 <Image src={image.url} alt={content.title} fill unoptimized className="object-cover" />
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <Badge>{image.source === "ai" ? "AI generated" : "Stock photo"}</Badge>
+                <Badge>{image.source === "ai" ? "Gerada por IA" : "Banco de imagens"}</Badge>
                 <button
                   onClick={generate}
                   className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary"
                 >
-                  <ArrowClockwise size={13} /> Regenerate
+                  <ArrowClockwise size={13} /> Gerar novamente
                 </button>
               </div>
             </div>
@@ -324,18 +324,18 @@ export default function GeneratePage() {
             <div className="space-y-4">
               {content.provider === "template" ? (
                 <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  Every free AI writer was unreachable, so this copy came from a
-                  template. Edit it before posting, or add a free GROQ_API_KEY or
-                  GEMINI_API_KEY to restore AI copy.
+                  Nenhum serviço gratuito de IA respondeu, então este texto veio de um
+                  modelo básico. Edite-o antes de publicar ou adicione uma GROQ_API_KEY ou
+                  GEMINI_API_KEY gratuita para restaurar a geração com IA.
                 </p>
               ) : content.provider ? (
                 <p className="text-xs text-muted-foreground">
-                  Copy written by <span className="font-medium capitalize">{content.provider}</span>
+                  Texto criado por <span className="font-medium capitalize">{content.provider}</span>
                 </p>
               ) : null}
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Opening hook</label>
+                <label className="text-xs font-semibold text-muted-foreground">Chamada inicial</label>
                 <input
                   value={content.title}
                   maxLength={120}
@@ -345,7 +345,7 @@ export default function GeneratePage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                <label className="text-xs font-semibold text-muted-foreground">Descrição</label>
                 <textarea
                   value={content.description}
                   maxLength={500}
@@ -364,7 +364,7 @@ export default function GeneratePage() {
                       className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
                     >
                       #{tag}
-                      <button onClick={() => removeHashtag(tag)} aria-label={`Remove ${tag}`} className="cursor-pointer">
+                      <button onClick={() => removeHashtag(tag)} aria-label={`Remover ${tag}`} className="cursor-pointer">
                         <X size={11} />
                       </button>
                     </span>
@@ -373,30 +373,30 @@ export default function GeneratePage() {
                     value={hashtagInput}
                     onChange={(e) => setHashtagInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addHashtag())}
-                    placeholder="add tag…"
+                    placeholder="adicionar…"
                     className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none focus:border-primary"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Link (optional)</label>
+                <label className="text-xs font-semibold text-muted-foreground">Link (opcional)</label>
                 <input
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="https://your-site.com/post"
+                  placeholder="https://seu-site.com.br/post"
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Page</label>
+                <label className="text-xs font-semibold text-muted-foreground">Página</label>
                 <select
                   value={pageId}
                   onChange={(e) => setPageId(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
                 >
-                  <option value="">Select a Page…</option>
+                  <option value="">Selecione uma Página…</option>
                   {pages.map((p) => (
                     <option key={p.page_id} value={p.page_id}>
                       {p.name}
@@ -405,14 +405,14 @@ export default function GeneratePage() {
                 </select>
                 {pages.length === 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    No Pages found. Connect Facebook from Settings first.
+                    Nenhuma Página encontrada. Conecte o Facebook nas Configurações primeiro.
                   </p>
                 )}
               </div>
 
               {scheduleOpen && (
                 <div>
-                  <label className="text-xs font-semibold text-muted-foreground">Schedule for</label>
+                  <label className="text-xs font-semibold text-muted-foreground">Agendar para</label>
                   <input
                     type="datetime-local"
                     value={scheduledAt}
@@ -424,19 +424,19 @@ export default function GeneratePage() {
 
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}>
-                  <FloppyDisk size={16} /> Save draft
+                  <FloppyDisk size={16} /> Salvar rascunho
                 </Button>
                 {scheduleOpen ? (
                   <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}>
-                    <CalendarPlus size={16} /> {saving === "schedule" ? "Scheduling…" : "Confirm schedule"}
+                    <CalendarPlus size={16} /> {saving === "schedule" ? "Agendando…" : "Confirmar agendamento"}
                   </Button>
                 ) : (
                   <Button variant="secondary" onClick={() => setScheduleOpen(true)} disabled={saving !== null}>
-                    <CalendarPlus size={16} /> Schedule
+                    <CalendarPlus size={16} /> Agendar
                   </Button>
                 )}
                 <Button onClick={() => save("post_now")} disabled={saving !== null}>
-                  <Rocket size={16} weight="fill" /> {saving === "post_now" ? "Publishing…" : "Publish now"}
+                  <Rocket size={16} weight="fill" /> {saving === "post_now" ? "Publicando…" : "Publicar agora"}
                 </Button>
               </div>
             </div>

@@ -81,14 +81,18 @@ Then hit **Connect**, pick a Page, and you are running.
 ### Content APIs
 
 Open **APIs** in the dashboard to save, replace, remove and test provider keys without
-redeploying. Text generation tries Groq, Gemini and Pollinations in that order. Images
-use Pollinations for AI generation and Pexels for stock photos. The model IDs are also
-editable from the same screen.
+redeploying. When enabled, Kie.ai uses an economical text model first and a second Kie
+model as fallback; Groq, Gemini and Pollinations remain the safety net. Kie image jobs
+are asynchronous, re-hosted permanently in Supabase, and can be disabled independently
+so high-volume publishing uses zero-credit local templates instead. Model IDs, daily
+credit limit, low-balance warning and webhook HMAC are editable from the same screen.
 
 Environment variables remain optional deployment-time fallbacks:
 
 | Variable | Provider |
 | --- | --- |
+| `KIE_API_KEY` | Kie.ai unified text and media API |
+| `KIE_WEBHOOK_HMAC_KEY` | Optional Kie callback signature verification |
 | `GROQ_API_KEY` | Groq |
 | `GEMINI_API_KEY` | Google Gemini |
 | `POLLINATIONS_API_KEY` | Pollinations text and images |
@@ -125,5 +129,5 @@ npm run dev
 ## Stack
 
 Next.js 16 (App Router) · TypeScript · Tailwind v4 · Supabase (Postgres + Storage) ·
-Meta Graph API v26.0 · Groq / Gemini / Pollinations for text · Pollinations / Pexels for
-images.
+Meta Graph API v26.0 · Kie.ai / Groq / Gemini / Pollinations for text · local templates /
+Kie.ai / Pollinations / Pexels for images.

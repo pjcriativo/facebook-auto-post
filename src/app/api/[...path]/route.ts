@@ -13,7 +13,13 @@ import {
   verifyCurrentAdminPassword,
 } from "@/lib/auth/credentials";
 import { generateContent } from "@/lib/ai/text";
-import { generateImage } from "@/lib/ai/image";
+import { generateImage, resolveImageSource } from "@/lib/ai/image";
+import {
+  createKieImageJob,
+  refreshKieImageJob,
+  refreshKieImageJobByTaskId,
+  verifyKieWebhook,
+} from "@/lib/ai/kie";
 import {
   DEFAULT_AI_MODELS,
   getAiCredentials,
@@ -103,7 +109,7 @@ function unauthorized() {
  * The OAuth callback is exempt because it is a redirect back from Facebook and
  * is already protected by its single-use `state` cookie.
  */
-const OPEN_ROUTES = new Set(["auth/login", "auth/logout", "facebook/oauth/callback"]);
+const OPEN_ROUTES = new Set(["auth/login", "auth/logout", "facebook/oauth/callback", "kie/webhook"]);
 
 async function hasSession(req: Request): Promise<boolean> {
   const cookies = req.headers.get("cookie")?.split("; ") ?? [];
@@ -152,9 +158,19 @@ async function publicSettings(settings: Awaited<ReturnType<typeof getSettings>>)
     gemini_api_key,
     pollinations_api_key,
     pexels_api_key,
+    kie_api_key,
+    kie_webhook_hmac_key,
     ...safe
   } = settings;
-  void [admin_password_hash, groq_api_key, gemini_api_key, pollinations_api_key, pexels_api_key];
+  void [
+    admin_password_hash,
+    groq_api_key,
+    gemini_api_key,
+    pollinations_api_key,
+    pexels_api_key,
+    kie_api_key,
+    kie_webhook_hmac_key,
+  ];
   return {
     ...safe,
     admin_email: settings.admin_email?.trim().toLowerCase() || env.adminEmail,
@@ -193,6 +209,19 @@ export async function GET(req: Request, ctx: Ctx) {
         stored?.trim() ? "panel" : fallback ? "environment" : "none";
       return json({
         providers: {
+          kie: {
+            configured: Boolean(credentials.kieApiKey),
+            source: source(settings.kie_api_key, env.kieApiKey),
+            enabled: credentials.kieEnabled,
+            imageEnabled: credentials.kieImageEnabled,
+            textModel: credentials.kieTextModel,
+            textFallbackModel: credentials.kieTextFallbackModel,
+            imageModel: credentials.kieImageModel,
+            imageFallbackModel: credentials.kieImageFallbackModel,
+            dailyCreditLimit: credentials.kieDailyCreditLimit,
+            lowBalanceThreshold: credentials.kieLowBalanceThreshold,
+            webhookConfigured: Boolean(credentials.kieWebhookHmacKey),
+          },
           groq: {
             configured: Boolean(credentials.groqApiKey),
             source: source(settings.groq_api_key, env.groqApiKey),
@@ -232,6 +261,20 @@ export async function GET(req: Request, ctx: Ctx) {
 
     if (route === "facebook/pages") {
       return getPages(url.searchParams.get("refresh") === "1");
+    }
+
+    if (path.length === 3 && path[0] === "generate" && path[1] === "image") {
+      try {
+        const job = await refreshKieImageJob(path[2]);
+        return json({
+          jobId: job.id,
+          status: job.status,
+          ...(job.result_url ? { image: { url: job.result_url, source: "ai" } } : {}),
+          ...(job.error_message ? { error: job.error_message } : {}),
+        });
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Tarefa não encontrada." }, 404);
+      }
     }
 
     if (route === "topics") {
@@ -340,7 +383,7 @@ const PasswordBody = z.object({
     .regex(/[0-9]/),
 });
 
-const ProviderName = z.enum(["groq", "gemini", "pollinations", "pexels"]);
+const ProviderName = z.enum(["kie", "groq", "gemini", "pollinations", "pexels"]);
 const TestProviderBody = z.object({ provider: ProviderName });
 const CreateTemplateBody = z.object({
   name: z.string().trim().min(2).max(80),
@@ -359,6 +402,24 @@ export async function POST(req: Request, ctx: Ctx) {
   return safely(async () => {
     const denied = await guard(route, req, url);
     if (denied) return denied;
+
+    if (route === "kie/webhook") {
+      const body = await req.json().catch(() => null);
+      const credentials = await getAiCredentials();
+      if (
+        !verifyKieWebhook(
+          body,
+          req.headers.get("x-webhook-timestamp"),
+          req.headers.get("x-webhook-signature"),
+          credentials.kieWebhookHmacKey
+        )
+      ) {
+        return json({ error: "Assinatura do webhook inválida." }, 401);
+      }
+      const taskId = body?.data?.taskId ?? body?.data?.task_id;
+      await refreshKieImageJobByTaskId(taskId);
+      return json({ ok: true });
+    }
 
     if (route === "auth/login") {
       const parsed = LoginBody.safeParse(await req.json().catch(() => null));
@@ -516,7 +577,22 @@ export async function POST(req: Request, ctx: Ctx) {
       const parsed = ImageBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe uma descrição e a fonte da imagem." }, 400);
       try {
-        return json(await generateImage(parsed.data.prompt, parsed.data.source));
+        const resolved = resolveImageSource(parsed.data.source);
+        const credentials = await getAiCredentials();
+        if (
+          resolved === "ai" &&
+          credentials.kieApiKey &&
+          credentials.kieEnabled &&
+          credentials.kieImageEnabled
+        ) {
+          try {
+            const job = await createKieImageJob(parsed.data.prompt);
+            return json({ jobId: job.id, status: job.status }, 202);
+          } catch (error) {
+            console.warn("[generate/image] Kie.ai unavailable; using existing fallback:", error);
+          }
+        }
+        return json(await generateImage(parsed.data.prompt, resolved));
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : "Não foi possível gerar a imagem." }, 502);
       }
@@ -666,7 +742,7 @@ export async function POST(req: Request, ctx: Ctx) {
 /* ---------------------------------------------------------------- PATCH */
 
 const SettingsBody = z.object({
-  image_source: z.enum(["ai", "stock", "mixed"]).optional(),
+  image_source: z.enum(["ai", "stock", "mixed", "template"]).optional(),
   utm_suffix: z.string().max(200).optional(),
   auto_post_enabled: z.boolean().optional(),
   posts_per_day: z.number().int().min(1).max(20).optional(),
@@ -685,7 +761,14 @@ const IntegrationBody = z.object({
   apiKey: z.string().trim().min(8).max(500).optional(),
   model: z.string().trim().min(1).max(120).optional(),
   textModel: z.string().trim().min(1).max(120).optional(),
+  textFallbackModel: z.string().trim().min(1).max(120).optional(),
   imageModel: z.string().trim().min(1).max(120).optional(),
+  imageFallbackModel: z.string().trim().min(1).max(120).optional(),
+  enabled: z.boolean().optional(),
+  imageEnabled: z.boolean().optional(),
+  dailyCreditLimit: z.number().min(0).max(1_000_000).nullable().optional(),
+  lowBalanceThreshold: z.number().min(0).max(1_000_000).optional(),
+  webhookHmacKey: z.string().trim().min(16).max(500).optional(),
 });
 const UpdateTemplateBody = z.object({
   name: z.string().trim().min(2).max(80).optional(),
@@ -749,7 +832,20 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const input = parsed.data;
       const patch: Partial<AppSettings> = {};
 
-      if (input.provider === "groq") {
+      if (input.provider === "kie") {
+        if (input.apiKey) patch.kie_api_key = input.apiKey;
+        if (input.textModel) patch.kie_text_model = input.textModel;
+        if (input.textFallbackModel) patch.kie_text_fallback_model = input.textFallbackModel;
+        if (input.imageModel) patch.kie_image_model = input.imageModel;
+        if (input.imageFallbackModel) patch.kie_image_fallback_model = input.imageFallbackModel;
+        if (input.enabled !== undefined) patch.kie_enabled = input.enabled;
+        if (input.imageEnabled !== undefined) patch.kie_image_enabled = input.imageEnabled;
+        if (input.dailyCreditLimit !== undefined) patch.kie_daily_credit_limit = input.dailyCreditLimit;
+        if (input.lowBalanceThreshold !== undefined) {
+          patch.kie_low_balance_threshold = input.lowBalanceThreshold;
+        }
+        if (input.webhookHmacKey) patch.kie_webhook_hmac_key = input.webhookHmacKey;
+      } else if (input.provider === "groq") {
         if (input.apiKey) patch.groq_api_key = input.apiKey;
         if (input.model) patch.groq_model = input.model;
       } else if (input.provider === "gemini") {
@@ -770,7 +866,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         await updateSettings(patch);
         return json({ ok: true });
       } catch (err) {
-        if (err instanceof Error && /(groq|gemini|pollinations|pexels)_/.test(err.message)) {
+        if (err instanceof Error && /(kie|groq|gemini|pollinations|pexels)_/.test(err.message)) {
           return json({ error: "Aplique a migração mais recente do Supabase antes de salvar APIs." }, 409);
         }
         throw err;
@@ -861,6 +957,7 @@ export async function DELETE(req: Request, ctx: Ctx) {
       const parsed = ProviderName.safeParse(path[1]);
       if (!parsed.success) return json({ error: "Provedor inválido." }, 400);
       const columns = {
+        kie: { kie_api_key: null, kie_enabled: false, kie_image_enabled: false, kie_webhook_hmac_key: null },
         groq: { groq_api_key: null },
         gemini: { gemini_api_key: null },
         pollinations: { pollinations_api_key: null },

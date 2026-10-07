@@ -13,11 +13,24 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-type Provider = "groq" | "gemini" | "pollinations" | "pexels";
+type Provider = "kie" | "groq" | "gemini" | "pollinations" | "pexels";
 type Source = "panel" | "environment" | "none";
 
 interface Integrations {
   providers: {
+    kie: {
+      configured: boolean;
+      source: Source;
+      enabled: boolean;
+      imageEnabled: boolean;
+      textModel: string;
+      textFallbackModel: string;
+      imageModel: string;
+      imageFallbackModel: string;
+      dailyCreditLimit: number | null;
+      lowBalanceThreshold: number;
+      webhookConfigured: boolean;
+    };
     groq: { configured: boolean; source: Source; model: string };
     gemini: { configured: boolean; source: Source; model: string };
     pollinations: {
@@ -39,6 +52,15 @@ const PROVIDERS: Array<{
   keyPlaceholder: string;
   icon: typeof Robot;
 }> = [
+  {
+    id: "kie",
+    name: "Kie.ai",
+    role: "Principal · texto econômico e imagens sob demanda",
+    description: "Uma chave para modelos GPT, Gemini e mídia. Texto tem prioridade; imagens Kie podem ficar desligadas para preservar créditos.",
+    href: "https://kie.ai/api-key",
+    keyPlaceholder: "Cole a chave da Kie.ai",
+    icon: Robot,
+  },
   {
     id: "groq",
     name: "Groq",
@@ -80,16 +102,28 @@ const PROVIDERS: Array<{
 export default function ApisPage() {
   const [data, setData] = useState<Integrations | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
+    kie: "",
     groq: "",
     gemini: "",
     pollinations: "",
     pexels: "",
   });
   const [models, setModels] = useState({
+    kieText: "",
+    kieTextFallback: "",
+    kieImage: "",
+    kieImageFallback: "",
     groq: "",
     gemini: "",
     pollinationsText: "",
     pollinationsImage: "",
+  });
+  const [kieOptions, setKieOptions] = useState({
+    enabled: false,
+    imageEnabled: false,
+    dailyCreditLimit: "",
+    lowBalanceThreshold: "100",
+    webhookHmacKey: "",
   });
   const [busy, setBusy] = useState<string | null>(null);
   const [messages, setMessages] = useState<Partial<Record<Provider, { ok: boolean; text: string }>>>({});
@@ -101,11 +135,23 @@ export default function ApisPage() {
     if (!res.ok) throw new Error(body.error ?? "Não foi possível carregar as APIs.");
     setData(body);
     setModels({
+      kieText: body.providers.kie.textModel,
+      kieTextFallback: body.providers.kie.textFallbackModel,
+      kieImage: body.providers.kie.imageModel,
+      kieImageFallback: body.providers.kie.imageFallbackModel,
       groq: body.providers.groq.model,
       gemini: body.providers.gemini.model,
       pollinationsText: body.providers.pollinations.textModel,
       pollinationsImage: body.providers.pollinations.imageModel,
     });
+    setKieOptions((current) => ({
+      ...current,
+      enabled: body.providers.kie.enabled,
+      imageEnabled: body.providers.kie.imageEnabled,
+      dailyCreditLimit: body.providers.kie.dailyCreditLimit?.toString() ?? "",
+      lowBalanceThreshold: body.providers.kie.lowBalanceThreshold.toString(),
+      webhookHmacKey: "",
+    }));
   }
 
   useEffect(() => {
@@ -118,9 +164,28 @@ export default function ApisPage() {
     setBusy(`save-${provider}`);
     setMessages((current) => ({ ...current, [provider]: undefined }));
     try {
-      const payload: Record<string, string> = { provider };
+      const payload: Record<string, unknown> = { provider };
       if (keys[provider].trim()) payload.apiKey = keys[provider].trim();
-      if (provider === "groq") payload.model = models.groq.trim();
+      if (provider === "kie") {
+        const kiePayload: Record<string, unknown> = {
+          provider,
+          enabled: kieOptions.enabled,
+          imageEnabled: kieOptions.imageEnabled,
+          textModel: models.kieText.trim(),
+          textFallbackModel: models.kieTextFallback.trim(),
+          imageModel: models.kieImage.trim(),
+          imageFallbackModel: models.kieImageFallback.trim(),
+          dailyCreditLimit: kieOptions.dailyCreditLimit.trim()
+            ? Number(kieOptions.dailyCreditLimit)
+            : null,
+          lowBalanceThreshold: Number(kieOptions.lowBalanceThreshold || 0),
+        };
+        if (keys.kie.trim()) kiePayload.apiKey = keys.kie.trim();
+        if (kieOptions.webhookHmacKey.trim()) {
+          kiePayload.webhookHmacKey = kieOptions.webhookHmacKey.trim();
+        }
+        Object.assign(payload, kiePayload);
+      } else if (provider === "groq") payload.model = models.groq.trim();
       if (provider === "gemini") payload.model = models.gemini.trim();
       if (provider === "pollinations") {
         payload.textModel = models.pollinationsText.trim();
@@ -214,9 +279,9 @@ export default function ApisPage() {
           <div>
             <h2 className="font-heading font-bold text-foreground">Chaves e provedores de conteúdo</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Existem três LLMs para texto: Groq, Gemini e Pollinations, usados nessa ordem. Para imagens,
-              o painel usa Pollinations (IA) e Pexels (fotos). As chaves ficam somente no servidor e nunca
-              são devolvidas ao navegador.
+              A Kie.ai pode ser o provedor principal de texto econômico e de imagens sob demanda. Groq,
+              Gemini e Pollinations continuam como fallbacks; Pexels fornece fotos. Templates locais não
+              consomem créditos. Todas as chaves ficam somente no servidor.
             </p>
           </div>
         </div>
@@ -228,7 +293,7 @@ export default function ApisPage() {
           const message = messages[provider.id];
           const Icon = provider.icon;
           return (
-            <Card key={provider.id} className="flex flex-col">
+            <Card key={provider.id} className={`flex flex-col ${provider.id === "kie" ? "lg:col-span-2" : ""}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-muted-foreground">
@@ -265,6 +330,67 @@ export default function ApisPage() {
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                 />
               </div>
+
+              {provider.id === "kie" && (
+                <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface-2/50 p-3">
+                  <label className="flex items-center justify-between gap-3 text-sm text-foreground">
+                    <span>
+                      <span className="block font-semibold">Priorizar Kie nos textos</span>
+                      <span className="block text-xs text-muted-foreground">Usa os provedores atuais se a Kie falhar.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={kieOptions.enabled}
+                      onChange={(event) => setKieOptions((currentOptions) => ({ ...currentOptions, enabled: event.target.checked }))}
+                      className="h-4 w-4 accent-primary"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between gap-3 text-sm text-foreground">
+                    <span>
+                      <span className="block font-semibold">Permitir imagens pela Kie</span>
+                      <span className="block text-xs text-muted-foreground">Deixe desligado para priorizar templates sem custo.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={kieOptions.imageEnabled}
+                      onChange={(event) => setKieOptions((currentOptions) => ({ ...currentOptions, imageEnabled: event.target.checked }))}
+                      className="h-4 w-4 accent-primary"
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ModelField id="kie-text-model" label="Texto econômico (principal)" value={models.kieText} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieText: value }))} />
+                    <ModelField id="kie-text-fallback" label="Texto reserva" value={models.kieTextFallback} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieTextFallback: value }))} />
+                    <ModelField id="kie-image-model" label="Imagem principal" value={models.kieImage} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImage: value }))} />
+                    <ModelField id="kie-image-fallback" label="Imagem reserva" value={models.kieImageFallback} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImageFallback: value }))} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <NumberField
+                      id="kie-daily-limit"
+                      label="Limite diário (créditos, vazio = sem limite)"
+                      value={kieOptions.dailyCreditLimit}
+                      onChange={(value) => setKieOptions((currentOptions) => ({ ...currentOptions, dailyCreditLimit: value }))}
+                    />
+                    <NumberField
+                      id="kie-low-balance"
+                      label="Avisar saldo baixo em"
+                      value={kieOptions.lowBalanceThreshold}
+                      onChange={(value) => setKieOptions((currentOptions) => ({ ...currentOptions, lowBalanceThreshold: value }))}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="kie-webhook-key" className="text-xs font-semibold text-muted-foreground">Chave HMAC do webhook (opcional)</label>
+                    <input
+                      id="kie-webhook-key"
+                      type="password"
+                      autoComplete="new-password"
+                      value={kieOptions.webhookHmacKey}
+                      onChange={(event) => setKieOptions((currentOptions) => ({ ...currentOptions, webhookHmacKey: event.target.value }))}
+                      placeholder={data.providers.kie.webhookConfigured ? "•••• configurada — digite para substituir" : "Gerada em Settings na Kie.ai"}
+                      className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+                    />
+                  </div>
+                </div>
+              )}
 
               {provider.id === "groq" && (
                 <ModelField id="groq-model" label="Modelo de texto" value={models.groq} onChange={(value) => setModels((currentModels) => ({ ...currentModels, groq: value }))} />
@@ -336,6 +462,33 @@ function ModelField({
         onChange={(e) => onChange(e.target.value)}
         spellCheck={false}
         className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 font-mono text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+      />
+    </div>
+  );
+}
+
+function NumberField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        step="1"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
       />
     </div>
   );

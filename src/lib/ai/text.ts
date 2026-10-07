@@ -1,4 +1,5 @@
 import { getAiCredentials, type AiCredentials } from "@/lib/ai/credentials";
+import { kieChatCompletion } from "@/lib/ai/kie";
 import type { ContentProvider, GeneratedContent } from "@/lib/types";
 
 /**
@@ -136,6 +137,22 @@ type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
 function providerChain(topic: string, credentials: AiCredentials): Attempt[] {
   const chain: Attempt[] = [];
+
+  // Kie is deliberately first when enabled: the economical model writes the
+  // normal high-volume posts and the second Kie model is only used when the
+  // first one fails. Existing providers remain untouched as a second safety net.
+  if (credentials.kieApiKey && credentials.kieEnabled) {
+    for (const model of [...new Set([credentials.kieTextModel, credentials.kieTextFallbackModel])]) {
+      chain.push({
+        provider: "kie",
+        run: () =>
+          kieChatCompletion(model, [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: `Tema: ${topic}` },
+          ]),
+      });
+    }
+  }
 
   // A configured free-tier key beats the keyless service on both quality and
   // reliability, so those go first whenever one is present.

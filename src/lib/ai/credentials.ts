@@ -2,6 +2,10 @@ import { getSettings } from "@/lib/db/settings";
 import { env } from "@/lib/env";
 
 export const DEFAULT_AI_MODELS = {
+  kieText: "gemini-3-5-flash-openai",
+  kieTextFallback: "gpt-5-2",
+  kieImage: "gpt-image-2-text-to-image",
+  kieImageFallback: "nano-banana-2",
   groq: "llama-3.3-70b-versatile",
   gemini: "gemini-3.5-flash-lite",
   pollinationsText: "openai",
@@ -9,6 +13,16 @@ export const DEFAULT_AI_MODELS = {
 } as const;
 
 export interface AiCredentials {
+  kieApiKey: string;
+  kieEnabled: boolean;
+  kieImageEnabled: boolean;
+  kieTextModel: string;
+  kieTextFallbackModel: string;
+  kieImageModel: string;
+  kieImageFallbackModel: string;
+  kieDailyCreditLimit: number | null;
+  kieLowBalanceThreshold: number;
+  kieWebhookHmacKey: string;
   groqApiKey: string;
   groqModel: string;
   geminiApiKey: string;
@@ -29,6 +43,19 @@ export async function getAiCredentials(): Promise<AiCredentials> {
   }
 
   return {
+    kieApiKey: settings?.kie_api_key?.trim() || env.kieApiKey,
+    kieEnabled: Boolean(settings?.kie_enabled),
+    kieImageEnabled: Boolean(settings?.kie_image_enabled),
+    kieTextModel: settings?.kie_text_model?.trim() || DEFAULT_AI_MODELS.kieText,
+    kieTextFallbackModel:
+      settings?.kie_text_fallback_model?.trim() || DEFAULT_AI_MODELS.kieTextFallback,
+    kieImageModel: settings?.kie_image_model?.trim() || DEFAULT_AI_MODELS.kieImage,
+    kieImageFallbackModel:
+      settings?.kie_image_fallback_model?.trim() || DEFAULT_AI_MODELS.kieImageFallback,
+    kieDailyCreditLimit:
+      settings?.kie_daily_credit_limit == null ? null : Number(settings.kie_daily_credit_limit),
+    kieLowBalanceThreshold: Number(settings?.kie_low_balance_threshold ?? 100),
+    kieWebhookHmacKey: settings?.kie_webhook_hmac_key?.trim() || env.kieWebhookHmacKey,
     groqApiKey: settings?.groq_api_key?.trim() || env.groqApiKey,
     groqModel: settings?.groq_model?.trim() || DEFAULT_AI_MODELS.groq,
     geminiApiKey: settings?.gemini_api_key?.trim() || env.geminiApiKey,
@@ -42,13 +69,19 @@ export async function getAiCredentials(): Promise<AiCredentials> {
   };
 }
 
-export type ApiProvider = "groq" | "gemini" | "pollinations" | "pexels";
+export type ApiProvider = "kie" | "groq" | "gemini" | "pollinations" | "pexels";
 
 export async function testApiProvider(provider: ApiProvider): Promise<{ message: string }> {
   const credentials = await getAiCredentials();
   let response: Response;
 
-  if (provider === "groq") {
+  if (provider === "kie") {
+    if (!credentials.kieApiKey) throw new Error("Adicione uma chave da Kie.ai primeiro.");
+    response = await fetch("https://api.kie.ai/api/v1/chat/credit", {
+      headers: { Authorization: `Bearer ${credentials.kieApiKey}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } else if (provider === "groq") {
     if (!credentials.groqApiKey) throw new Error("Adicione uma chave da Groq primeiro.");
     response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -106,6 +139,15 @@ export async function testApiProvider(provider: ApiProvider): Promise<{ message:
     const body = await response.json().catch(() => null);
     const detail = body?.error?.message ?? body?.message ?? `status ${response.status}`;
     throw new Error(`A API recusou o teste: ${detail}`);
+  }
+
+  if (provider === "kie") {
+    const body = await response.json().catch(() => null);
+    if (body?.code !== 200 || typeof body?.data !== "number") {
+      throw new Error(`A API recusou o teste: ${body?.msg ?? "resposta inválida"}`);
+    }
+    const warning = body.data <= credentials.kieLowBalanceThreshold ? " · saldo baixo" : "";
+    return { message: `Conexão validada · saldo ${body.data} créditos${warning}` };
   }
 
   return { message: "Conexão validada com sucesso." };

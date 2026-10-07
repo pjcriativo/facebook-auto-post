@@ -34,6 +34,17 @@ export interface AppSettings {
   pollinations_text_model?: string | null;
   pollinations_image_model?: string | null;
   pexels_api_key?: string | null;
+  kie_api_key?: string | null;
+  kie_enabled?: boolean;
+  kie_image_enabled?: boolean;
+  kie_text_model?: string | null;
+  kie_text_fallback_model?: string | null;
+  kie_image_model?: string | null;
+  kie_image_fallback_model?: string | null;
+  kie_daily_credit_limit?: number | null;
+  kie_low_balance_threshold?: number | null;
+  /** Optional Kie webhook secret; server-only and never returned to the browser. */
+  kie_webhook_hmac_key?: string | null;
   /** Meta app credentials, normally entered in Settings rather than env vars. */
   facebook_app_id: string | null;
   facebook_app_secret: string | null;
@@ -92,7 +103,24 @@ export interface PageCache {
 
 /** Which free service actually wrote the copy. "template" means every AI
  *  provider was unreachable and the deterministic fallback was used. */
-export type ContentProvider = "groq" | "gemini" | "pollinations" | "template";
+export type ContentProvider = "kie" | "groq" | "gemini" | "pollinations" | "template";
+
+export interface AiGenerationJob {
+  id: string;
+  provider: "kie";
+  provider_task_id: string;
+  kind: "image";
+  model: string;
+  fallback_model: string | null;
+  fallback_attempted: boolean;
+  status: "pending" | "success" | "failed";
+  prompt: string;
+  result_url: string | null;
+  error_message: string | null;
+  credits_used: number | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface GeneratedContent {
   title: string;

@@ -3,6 +3,8 @@ import { createPostRecord } from "@/lib/db/posts";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { generateContent } from "@/lib/ai/text";
 import { generateImage } from "@/lib/ai/image";
+import { listTemplates } from "@/lib/db/templates";
+import { renderTemplate } from "@/lib/templates/render";
 import { getTrendingTopics } from "@/lib/trends";
 import { markTopicUsed, nextTopic, TopicsTableMissingError } from "@/lib/db/topics";
 import { decideTopicOrigin } from "@/lib/topic-origin";
@@ -93,7 +95,17 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   const topic = chosen.text;
 
   const content = await generateContent(topic);
-  const image = await generateImage(`${content.title} — ${topic}`, settings.image_source);
+  let image;
+  if (settings.image_source === "template") {
+    const template = (await listTemplates()).find((item) => item.enabled);
+    if (!template) throw new Error("Ative pelo menos um template para o piloto automático.");
+    image = await renderTemplate(
+      template,
+      content.artText || `${content.title}\n\n${content.description}`
+    );
+  } else {
+    image = await generateImage(`${content.title} — ${topic}`, settings.image_source);
+  }
 
   const draft = await createPostRecord({
     topic,

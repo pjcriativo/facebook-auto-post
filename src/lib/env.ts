@@ -72,6 +72,12 @@ export const env = {
   get pexelsApiKey() {
     return optional("PEXELS_API_KEY");
   },
+  get kieApiKey() {
+    return optional("KIE_API_KEY");
+  },
+  get kieWebhookHmacKey() {
+    return optional("KIE_WEBHOOK_HMAC_KEY");
+  },
 
   // Cron
   get cronSecret() {

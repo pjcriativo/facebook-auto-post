@@ -95,6 +95,18 @@ export default function GeneratePage() {
 
   const selectedPage = useMemo(() => pages.find((p) => p.page_id === pageId), [pages, pageId]);
 
+  async function waitForImage(jobId: string): Promise<{ url: string; source: ImageSource }> {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt < 5 ? 2500 : 4000));
+      const response = await fetch(`/api/generate/image/${jobId}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível acompanhar a geração da imagem.");
+      if (body.status === "success" && body.image) return body.image;
+      if (body.status === "failed") throw new Error(body.error ?? "A geração da imagem falhou.");
+    }
+    throw new Error("A imagem ainda está sendo gerada. Tente novamente em alguns instantes.");
+  }
+
   async function generate() {
     if (topic.trim().length < 2) {
       setError("Informe primeiro um tema com pelo menos algumas palavras.");
@@ -142,7 +154,10 @@ export default function GeneratePage() {
       } else {
         const imageRes = await imageRequest!;
         if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
-        imageData = await imageRes.json();
+        const responseData = await imageRes.json();
+        imageData = imageRes.status === 202
+          ? await waitForImage(responseData.jobId)
+          : responseData;
       }
 
       setContent(contentData);

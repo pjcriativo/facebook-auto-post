@@ -26,6 +26,16 @@ create table if not exists app_settings (
   pollinations_text_model text default 'openai',
   pollinations_image_model text default 'flux',
   pexels_api_key text,
+  kie_api_key text,
+  kie_enabled boolean not null default false,
+  kie_image_enabled boolean not null default false,
+  kie_text_model text not null default 'gemini-3-5-flash-openai',
+  kie_text_fallback_model text not null default 'gpt-5-2',
+  kie_image_model text not null default 'gpt-image-2-text-to-image',
+  kie_image_fallback_model text not null default 'nano-banana-2',
+  kie_daily_credit_limit numeric default 100,
+  kie_low_balance_threshold numeric not null default 100,
+  kie_webhook_hmac_key text,
   -- Meta app credentials. Kept here rather than in env vars so that installing
   -- this app is a paste into Settings, not a redeploy. Never leaves the server.
   facebook_app_id text,
@@ -124,6 +134,38 @@ on conflict (id) do nothing;
 create unique index if not exists topics_text_lower_idx on topics (lower(text));
 create index if not exists topics_rotation_idx on topics (enabled, last_used_at nulls first);
 
+create table if not exists ai_generation_jobs (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null default 'kie',
+  provider_task_id text not null unique,
+  kind text not null default 'image',
+  model text not null,
+  fallback_model text,
+  fallback_attempted boolean not null default false,
+  status text not null default 'pending',
+  prompt text not null,
+  result_url text,
+  error_message text,
+  credits_used numeric,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists ai_usage (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null,
+  operation text not null,
+  model text not null,
+  credits_used numeric not null default 0,
+  status text not null,
+  latency_ms integer,
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists ai_usage_provider_created_idx on ai_usage (provider, created_at desc);
+create index if not exists ai_generation_jobs_status_idx on ai_generation_jobs (status, created_at);
+
 -- The app accesses these tables exclusively from server code with the service
 -- role. Enabling RLS without public policies prevents the automatically
 -- granted anon/authenticated roles from reading tokens or changing app data.
@@ -132,6 +174,8 @@ alter table posts enable row level security;
 alter table pages_cache enable row level security;
 alter table topics enable row level security;
 alter table content_templates enable row level security;
+alter table ai_generation_jobs enable row level security;
+alter table ai_usage enable row level security;
 
 -- Public bucket every generated/sourced image is re-hosted into, so a post's
 -- image keeps working even if the free provider it came from goes down later.
@@ -164,3 +208,13 @@ alter table app_settings add column if not exists pollinations_api_key text;
 alter table app_settings add column if not exists pollinations_text_model text default 'openai';
 alter table app_settings add column if not exists pollinations_image_model text default 'flux';
 alter table app_settings add column if not exists pexels_api_key text;
+alter table app_settings add column if not exists kie_api_key text;
+alter table app_settings add column if not exists kie_enabled boolean not null default false;
+alter table app_settings add column if not exists kie_image_enabled boolean not null default false;
+alter table app_settings add column if not exists kie_text_model text not null default 'gemini-3-5-flash-openai';
+alter table app_settings add column if not exists kie_text_fallback_model text not null default 'gpt-5-2';
+alter table app_settings add column if not exists kie_image_model text not null default 'gpt-image-2-text-to-image';
+alter table app_settings add column if not exists kie_image_fallback_model text not null default 'nano-banana-2';
+alter table app_settings add column if not exists kie_daily_credit_limit numeric default 100;
+alter table app_settings add column if not exists kie_low_balance_threshold numeric not null default 100;
+alter table app_settings add column if not exists kie_webhook_hmac_key text;

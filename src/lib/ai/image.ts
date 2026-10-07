@@ -102,16 +102,19 @@ export async function generateImage(
               credentials.pollinationsImageModel
             )
           : await fetchStockImageBytes(prompt, credentials.pexelsApiKey);
-      return await upload(blob, fallbackSource);
+      return await uploadImageBlob(blob, fallbackSource);
     } catch {
       throw err instanceof Error ? err : new Error("Não foi possível gerar a imagem");
     }
   }
 
-  return upload(blob, source);
+  return uploadImageBlob(blob, source);
 }
 
-async function upload(blob: Blob, source: ImageSource): Promise<{ url: string; source: ImageSource }> {
+export async function uploadImageBlob(
+  blob: Blob,
+  source: ImageSource
+): Promise<{ url: string; source: ImageSource }> {
   const db = supabaseAdmin();
   const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
   const bytes = new Uint8Array(await blob.arrayBuffer());

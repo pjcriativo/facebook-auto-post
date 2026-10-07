@@ -676,6 +676,7 @@ function SettingsForm() {
             <option value="ai">Imagem gerada por IA</option>
             <option value="stock">Foto gratuita de banco de imagens</option>
             <option value="mixed">Combinar as duas opções</option>
+            <option value="template">Template viral local (mais econômico)</option>
           </select>
         </div>
 

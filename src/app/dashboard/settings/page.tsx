@@ -468,7 +468,7 @@ function SettingsForm() {
           <div>
             <h2 className="font-heading font-bold text-foreground">Autopilot</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Let the bot pick a topic and post on its own, with no one clicking anything.
+              Let Facebook Auto Post pick a topic and post on its own, with no one clicking anything.
             </p>
             <p className="mt-1.5 text-sm text-foreground">
               Writing about:{" "}

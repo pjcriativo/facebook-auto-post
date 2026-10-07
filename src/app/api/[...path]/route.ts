@@ -87,10 +87,9 @@ function unauthorized() {
 const OPEN_ROUTES = new Set(["auth/login", "auth/logout", "facebook/oauth/callback"]);
 
 async function hasSession(req: Request): Promise<boolean> {
-  const token = req.headers
-    .get("cookie")
-    ?.split("; ")
-    .find((c) => c.startsWith(`${SESSION_COOKIE}=`))
+  const cookies = req.headers.get("cookie")?.split("; ") ?? [];
+  const token = cookies
+    .find((c) => c.startsWith(`${SESSION_COOKIE}=`) || c.startsWith("pab_session="))
     ?.split("=")[1];
   return verifySessionToken(token);
 }
@@ -652,7 +651,7 @@ async function oauthCallback(req: Request, url: URL) {
 /**
  * Autopilot tick. Vercel's Hobby plan permits only one cron run per day — a
  * more frequent schedule in vercel.json is rejected at deploy time — so the
- * built-in cron fires once at 04:00 UTC (09:00 Asia/Karachi, the first default
+ * built-in cron fires once at 12:00 UTC (09:00 America/Sao_Paulo, the first default
  * posting hour). Every guard in maybeRunAutopilot is idempotent, so the
  * remaining posting slots can be driven by pointing any free external cron
  * (cron-job.org, UptimeRobot) at this same path with the CRON_SECRET.

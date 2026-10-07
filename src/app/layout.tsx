@@ -15,15 +15,53 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Facebook Auto Bot",
-  description: "Generate and auto-post optimized Facebook Page posts from any topic.",
+  title: {
+    default: "Facebook Auto Post — Automação e Publicação Inteligente para Facebook Pages",
+    template: "%s | Facebook Auto Post",
+  },
+  description:
+    "Crie, agende e publique posts automaticamente em suas páginas do Facebook com inteligência artificial, imagens e integração oficial com a Graph API.",
+  applicationName: "Facebook Auto Post",
+  keywords: [
+    "Facebook Auto Post",
+    "automação facebook",
+    "facebook auto publish",
+    "social media automation",
+    "meta graph api",
+    "facebook pages bot",
+    "agendador de posts facebook",
+  ],
+  authors: [{ name: "Facebook Auto Post" }],
+  creator: "Facebook Auto Post",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: "Facebook Auto Post",
+    title: "Facebook Auto Post — Automação e Publicação Inteligente",
+    description:
+      "Crie, agende e publique posts automaticamente em suas páginas do Facebook com inteligência artificial.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Facebook Auto Post",
+    description:
+      "Crie, agende e publique posts automaticamente em suas páginas do Facebook com inteligência artificial.",
+  },
 };
 
 // Runs before paint to apply the saved theme without a light->dark flash.
 const themeInitScript = `
 (function () {
   try {
-    var stored = localStorage.getItem("pab-theme");
+    var stored = localStorage.getItem("fap-theme") || localStorage.getItem("pab-theme");
     var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.classList.toggle("dark", dark);
   } catch (e) {}

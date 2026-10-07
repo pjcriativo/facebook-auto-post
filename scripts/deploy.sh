@@ -28,6 +28,8 @@ VC="npx -y vercel@latest"
 
 # SESSION_SECRET only needs to be stable, not memorable.
 SESSION_SECRET="${SESSION_SECRET:-$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')}"
+# Vercel sends this value as a Bearer token when invoking the configured cron.
+CRON_SECRET="${CRON_SECRET:-$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')}"
 
 echo "==> Linking $SCOPE/$PROJECT"
 $VC link --yes --project "$PROJECT" --scope "$SCOPE" --token "$VERCEL_TOKEN"
@@ -48,11 +50,11 @@ put_env NEXT_PUBLIC_SUPABASE_URL   "${NEXT_PUBLIC_SUPABASE_URL:?}"
 put_env SUPABASE_SERVICE_ROLE_KEY  "${SUPABASE_SERVICE_ROLE_KEY:?}"
 put_env ADMIN_PASSWORD             "$ADMIN_PASSWORD"
 put_env SESSION_SECRET             "$SESSION_SECRET"
-# Pinterest credentials are read lazily, so placeholders keep every other
-# feature working until a real Pinterest app exists.
-put_env PINTEREST_APP_ID           "${PINTEREST_APP_ID:-not-configured}"
-put_env PINTEREST_APP_SECRET       "${PINTEREST_APP_SECRET:-not-configured}"
-put_env PINTEREST_REDIRECT_URI     "${PINTEREST_REDIRECT_URI:-https://$PROJECT.vercel.app/api/pinterest/oauth/callback}"
+put_env CRON_SECRET                "$CRON_SECRET"
+# Meta credentials are read lazily or configured in Settings.
+[ -n "${FACEBOOK_APP_ID:-}" ] && put_env FACEBOOK_APP_ID "$FACEBOOK_APP_ID"
+[ -n "${FACEBOOK_APP_SECRET:-}" ] && put_env FACEBOOK_APP_SECRET "$FACEBOOK_APP_SECRET"
+[ -n "${FACEBOOK_CONFIG_ID:-}" ] && put_env FACEBOOK_CONFIG_ID "$FACEBOOK_CONFIG_ID"
 [ -n "${PEXELS_API_KEY:-}" ] && put_env PEXELS_API_KEY "$PEXELS_API_KEY"
 fi
 

@@ -58,11 +58,10 @@ function LoginForm() {
           onSubmit={onSubmit}
           className="rounded-card border border-border bg-surface p-8 shadow-xl shadow-black/5"
         >
-          <h1 className="font-heading text-xl font-bold text-foreground">Welcome back</h1>
+          <h1 className="font-heading text-xl font-bold text-foreground">Facebook Auto Post</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Enter your admin password to open the dashboard.
+            Digite a senha de administrador para acessar o dashboard.
           </p>
-
           <label className="mt-6 block text-sm font-medium text-foreground" htmlFor="password">
             Password
           </label>

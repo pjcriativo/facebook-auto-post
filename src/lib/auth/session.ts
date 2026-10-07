@@ -9,7 +9,8 @@
  */
 import { env } from "@/lib/env";
 
-export const SESSION_COOKIE = "pab_session";
+export const SESSION_COOKIE = "fap_session";
+export const LEGACY_SESSION_COOKIE = "pab_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 function toBase64Url(bytes: ArrayBuffer | Uint8Array): string {

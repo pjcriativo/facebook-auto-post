@@ -41,7 +41,7 @@ and takes two minutes from your Facebook account.
 
 2. Click **New project**.
 
-   - **Name:** anything, for example `facebook-auto-bot`
+   - **Name:** anything, for example `facebook-auto-post`
    - **Database password:** click Generate, then save it somewhere. You will not
      need it for this app, but it cannot be recovered later.
    - **Region:** pick the one closest to you
@@ -536,8 +536,8 @@ your own Page uses Standard Access and never needs it.
 Work through these in order:
 
 1. **App Domains** must contain the hostname, in **App settings → Basic** —
-   **hostname only**. `https://pinterest-auto-bot.vercel.app` never matches;
-   `pinterest-auto-bot.vercel.app` does. The field accepts the scheme without
+   **hostname only**. `https://facebook-auto-post.vercel.app` never matches;
+   `facebook-auto-post.vercel.app` does. The field accepts the scheme without
    complaining and then silently fails every check. Copy the value from your
    app's Settings screen instead of typing it. Confirm you clicked **Save
    changes**; the value can look entered and still be unsaved.

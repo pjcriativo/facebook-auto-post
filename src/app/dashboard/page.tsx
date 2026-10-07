@@ -167,7 +167,7 @@ export default async function DashboardOverviewPage() {
         <Card className="flex flex-col">
           <h2 className="font-heading text-base font-bold text-foreground">Quick generate</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pick a topic and let the bot write the copy and source the image.
+            Pick a topic and let Facebook Auto Post write the copy and source the image.
           </p>
           <Link href="/dashboard/generate" className="mt-4">
             <Button className="w-full">

@@ -1,4 +1,4 @@
--- Facebook Auto Bot — Supabase schema
+-- Facebook Auto Post — Supabase schema
 -- Run this in the Supabase SQL editor (Dashboard > SQL Editor > New query).
 --
 -- Safe to run again at any time. Every statement only creates what is missing,
@@ -32,7 +32,7 @@ create table if not exists app_settings (
   auto_post_enabled boolean not null default false,
   posts_per_day smallint not null default 3,
   posting_hours int[] not null default '{9,13,18}', -- local hours (0-23) the queue is allowed to fire
-  timezone text not null default 'Asia/Karachi',
+  timezone text not null default 'America/Sao_Paulo',
   last_auto_post_at timestamptz, -- prevents the autopilot firing twice in one posting-hour slot
   topic_source text not null default 'mine',       -- 'mine' | 'trending' | 'mixed'
   updated_at timestamptz not null default now(),
@@ -89,6 +89,14 @@ create table if not exists topics (
 -- Case-insensitive uniqueness, so pasting the same list twice adds nothing.
 create unique index if not exists topics_text_lower_idx on topics (lower(text));
 create index if not exists topics_rotation_idx on topics (enabled, last_used_at nulls first);
+
+-- The app accesses these tables exclusively from server code with the service
+-- role. Enabling RLS without public policies prevents the automatically
+-- granted anon/authenticated roles from reading tokens or changing app data.
+alter table app_settings enable row level security;
+alter table posts enable row level security;
+alter table pages_cache enable row level security;
+alter table topics enable row level security;
 
 -- Public bucket every generated/sourced image is re-hosted into, so a post's
 -- image keeps working even if the free provider it came from goes down later.

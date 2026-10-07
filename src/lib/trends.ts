@@ -1,9 +1,9 @@
 /**
- * Trending-topic suggestions for the "what should I make a pin about"
+ * Trending-topic suggestions for the "what should I make a post about"
  * moment. Two tiers, both free:
  *  1. Google Trends' unofficial daily-trends RSS feed (no key, no cost,
  *     but undocumented and can change shape or go down without notice).
- *  2. A curated list of evergreen Pinterest-performing niches, always
+ *  2. A curated list of evergreen Facebook-performing niches, always
  *     available, used whenever the feed fails or returns too little.
  */
 

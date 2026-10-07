@@ -56,7 +56,7 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-border p-4 text-xs text-muted-foreground">
-        Free-tier powered · AI text &amp; images at $0
+        Facebook Auto Post · AI text &amp; images
       </div>
     </aside>
   );

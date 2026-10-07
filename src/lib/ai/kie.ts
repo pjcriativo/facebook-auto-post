@@ -7,10 +7,16 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import type { AiGenerationJob } from "@/lib/types";
 
 const KIE_BASE = "https://api.kie.ai";
-const MODEL_ID = /^[a-zA-Z0-9._-]+$/;
+const CHAT_MODEL_ID = /^[a-zA-Z0-9._-]+$/;
+const TASK_MODEL_ID = /^[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)*$/;
 
-function checkedModel(model: string): string {
-  if (!MODEL_ID.test(model)) throw new Error("O identificador do modelo Kie.ai é inválido.");
+function checkedChatModel(model: string): string {
+  if (!CHAT_MODEL_ID.test(model)) throw new Error("O identificador do modelo de texto Kie.ai é inválido.");
+  return model;
+}
+
+function checkedTaskModel(model: string): string {
+  if (!TASK_MODEL_ID.test(model)) throw new Error("O identificador do modelo de imagem Kie.ai é inválido.");
   return model;
 }
 
@@ -45,7 +51,7 @@ export async function kieChatCompletion(model: string, messages: Array<{ role: s
     throw new Error("O limite diário de créditos da Kie.ai foi atingido.");
   }
 
-  const selected = checkedModel(model);
+  const selected = checkedChatModel(model);
   const started = Date.now();
   try {
     const data = await kieRequest(`/${selected}/v1/chat/completions`, credentials.kieApiKey, {
@@ -84,20 +90,26 @@ export async function kieChatCompletion(model: string, messages: Array<{ role: s
 }
 
 async function submitImageTask(model: string, prompt: string, apiKey: string, callback: boolean) {
+  const input = model.startsWith("nano-banana")
+    ? {
+        prompt,
+        image_input: [],
+        aspect_ratio: "1:1",
+        resolution: "1K",
+        output_format: "jpg",
+      }
+    : model.startsWith("flux-2/")
+      ? { prompt, aspect_ratio: "1:1", resolution: "1K", nsfw_checker: false }
+      : model.startsWith("gpt-image-2-5-")
+        ? { prompt, aspect_ratio: "1:1", resolution: "1K", background: "opaque" }
+        : { prompt, aspect_ratio: "1:1" };
+
   const body = await kieRequest("/api/v1/jobs/createTask", apiKey, {
     method: "POST",
     body: JSON.stringify({
-      model: checkedModel(model),
+      model: checkedTaskModel(model),
       ...(callback ? { callBackUrl: `${env.siteUrl}/api/kie/webhook` } : {}),
-      input: model.startsWith("nano-banana")
-        ? {
-            prompt,
-            image_input: [],
-            aspect_ratio: "1:1",
-            resolution: "1K",
-            output_format: "jpg",
-          }
-        : { prompt, aspect_ratio: "1:1" },
+      input,
     }),
   });
   const taskId = body?.data?.taskId;

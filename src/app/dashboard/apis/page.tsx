@@ -16,6 +16,78 @@ import { Button } from "@/components/ui/button";
 type Provider = "kie" | "groq" | "gemini" | "pollinations" | "pexels";
 type Source = "panel" | "environment" | "none";
 
+type ModelOption = {
+  value: string;
+  label: string;
+  description: string;
+};
+
+const KIE_TEXT_MODELS: ModelOption[] = [
+  {
+    value: "gemini-3-5-flash-openai",
+    label: "Gemini 3.5 Flash — econômico (recomendado)",
+    description: "Melhor escolha para grande volume de posts e baixo consumo.",
+  },
+  {
+    value: "gemini-3-6-flash-openai",
+    label: "Gemini 3.6 Flash — rápido",
+    description: "Opção Flash intermediária para respostas rápidas.",
+  },
+  {
+    value: "gemini-3-8-flash-openai",
+    label: "Gemini 3.8 Flash — qualidade e velocidade",
+    description: "Opção Flash mais avançada para textos que precisam de mais qualidade.",
+  },
+  {
+    value: "gemini-2.5-pro",
+    label: "Gemini 2.5 Pro — qualidade",
+    description: "Mais capacidade para conteúdos complexos, com custo maior que Flash.",
+  },
+  {
+    value: "gemini-3.1-pro",
+    label: "Gemini 3.1 Pro — raciocínio avançado",
+    description: "Para tarefas difíceis; não é a melhor opção para alto volume.",
+  },
+  {
+    value: "gpt-5-2",
+    label: "GPT-5.2 — reserva de alta qualidade",
+    description: "Boa escolha como fallback quando o modelo econômico falhar.",
+  },
+];
+
+const KIE_IMAGE_MODELS: ModelOption[] = [
+  {
+    value: "gpt-image-2-text-to-image",
+    label: "GPT Image 2 — qualidade (recomendado)",
+    description: "Boa composição e reprodução de textos em imagens.",
+  },
+  {
+    value: "nano-banana-2",
+    label: "Nano Banana 2 — econômico",
+    description: "Alternativa econômica para imagens ocasionais.",
+  },
+  {
+    value: "nano-banana-2-1",
+    label: "Nano Banana 2.1 — atualizado",
+    description: "Versão mais recente do Nano Banana para geração de imagens.",
+  },
+  {
+    value: "flux-2/flex-text-to-image",
+    label: "Flux 2 Flex — equilibrado",
+    description: "Equilíbrio entre qualidade, flexibilidade e consumo.",
+  },
+  {
+    value: "flux-2/pro-text-to-image",
+    label: "Flux 2 Pro — alta qualidade",
+    description: "Modelo fotorealista para imagens em que a qualidade é prioridade.",
+  },
+  {
+    value: "gpt-image-2-5-flare-text-to-image",
+    label: "GPT Image 2.5 Flare — avançado",
+    description: "Opção avançada para peças especiais, com consumo potencialmente maior.",
+  },
+];
+
 interface Integrations {
   providers: {
     kie: {
@@ -357,11 +429,15 @@ export default function ApisPage() {
                       className="h-4 w-4 accent-primary"
                     />
                   </label>
+                  <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
+                    O modelo principal é usado em todos os posts. O modelo reserva entra automaticamente
+                    somente se o principal falhar.
+                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <ModelField id="kie-text-model" label="Texto econômico (principal)" value={models.kieText} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieText: value }))} />
-                    <ModelField id="kie-text-fallback" label="Texto reserva" value={models.kieTextFallback} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieTextFallback: value }))} />
-                    <ModelField id="kie-image-model" label="Imagem principal" value={models.kieImage} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImage: value }))} />
-                    <ModelField id="kie-image-fallback" label="Imagem reserva" value={models.kieImageFallback} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImageFallback: value }))} />
+                    <ModelSelectField id="kie-text-model" label="Modelo de texto principal" value={models.kieText} options={KIE_TEXT_MODELS} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieText: value }))} />
+                    <ModelSelectField id="kie-text-fallback" label="Modelo de texto reserva" value={models.kieTextFallback} options={KIE_TEXT_MODELS} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieTextFallback: value }))} />
+                    <ModelSelectField id="kie-image-model" label="Modelo de imagem principal" value={models.kieImage} options={KIE_IMAGE_MODELS} disabled={!kieOptions.imageEnabled} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImage: value }))} />
+                    <ModelSelectField id="kie-image-fallback" label="Modelo de imagem reserva" value={models.kieImageFallback} options={KIE_IMAGE_MODELS} disabled={!kieOptions.imageEnabled} onChange={(value) => setModels((currentModels) => ({ ...currentModels, kieImageFallback: value }))} />
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <NumberField
@@ -463,6 +539,46 @@ function ModelField({
         spellCheck={false}
         className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 font-mono text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
       />
+    </div>
+  );
+}
+
+function ModelSelectField({
+  id,
+  label,
+  value,
+  options,
+  disabled = false,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: ModelOption[];
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const selected = options.find((option) => option.value === value);
+  const knownValue = Boolean(selected);
+
+  return (
+    <div className="mt-3">
+      <label htmlFor={id} className="text-xs font-semibold text-muted-foreground">{label}</label>
+      <select
+        id={id}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {!knownValue && value && <option value={value}>{value} — configuração salva</option>}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {selected?.description ?? (value ? `Modelo personalizado salvo: ${value}` : "Selecione um modelo.")}
+      </p>
     </div>
   );
 }

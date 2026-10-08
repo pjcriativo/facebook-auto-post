@@ -153,6 +153,7 @@ export interface Post {
   facebook_post_id: string | null;
   error_message: string | null;
   generation_id?: string | null;
+  template_id?: string | null;
   agent_id?: string | null;
   content_language?: AgentLanguage | null;
   agent_prompt_version?: number | null;

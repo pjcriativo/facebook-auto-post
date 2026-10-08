@@ -124,12 +124,14 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   let image;
   let baseImageUrl: string | null = null;
   let usedImagePrompt: string | null = null;
+  let usedTemplateId: string | null = null;
   if (settings.image_source === "template") {
     const compatible = (await listTemplates()).filter(
       (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
     );
     const template = compatible.find((item) => item.id === settings.default_template_id) ?? compatible[0];
     if (!template) throw new Error("Ative pelo menos um template para o piloto automático.");
+    usedTemplateId = template.id;
     image = await renderTemplate(
       template,
       content.artText || `${content.title}\n\n${content.description}`
@@ -169,6 +171,7 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     scheduled_at: null,
     status: "draft",
     generation_id: generationId,
+    template_id: usedTemplateId,
     agent_id: responsible?.agent.id ?? null,
     content_language: responsible?.language.locale ?? null,
     agent_prompt_version: responsible?.agent.prompt_version ?? null,

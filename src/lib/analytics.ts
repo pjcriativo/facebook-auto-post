@@ -1,8 +1,11 @@
 import { listAgents } from "@/lib/db/agents";
 import { listPosts } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
+import { listTemplates } from "@/lib/db/templates";
+import { KIE_CREDIT_USD } from "@/lib/ai/usage";
 import { fetchPage, fetchPostEngagement } from "@/lib/facebook/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { localParts } from "@/lib/time";
 import type { PostMetricSnapshot } from "@/lib/types";
 
 const DEFAULT_REFRESH_HOURS = 6;
@@ -78,19 +81,38 @@ export async function syncPublishedPostMetrics(options: {
 }
 
 export async function analyticsReport() {
-  const [posts, agents, snapshotResult] = await Promise.all([
+  const [posts, agents, templates, settings, snapshotResult] = await Promise.all([
     listPosts({ status: "posted", limit: 500 }),
     listAgents(),
+    listTemplates(),
+    getSettings(),
     supabaseAdmin().from("post_metric_snapshots").select("*").order("fetched_at", { ascending: false }).limit(3000),
   ]);
   if (snapshotResult.error) throw new Error(`Não foi possível carregar as métricas: ${snapshotResult.error.message}`);
+
+  const generationIds = posts.map((post) => post.generation_id).filter((id): id is string => Boolean(id));
+  const usageResult = generationIds.length
+    ? await supabaseAdmin().from("ai_usage").select("generation_id,credits_used,status").in("generation_id", generationIds)
+    : { data: [], error: null };
+  if (usageResult.error) throw new Error(`Não foi possível relacionar os custos: ${usageResult.error.message}`);
+  const creditsByGeneration = new Map<string, number>();
+  for (const item of usageResult.data ?? []) {
+    if (item.status !== "success" || !item.generation_id) continue;
+    creditsByGeneration.set(item.generation_id, (creditsByGeneration.get(item.generation_id) ?? 0) + Number(item.credits_used ?? 0));
+  }
 
   const latest = new Map<string, PostMetricSnapshot>();
   for (const row of snapshotResult.data ?? []) {
     if (!latest.has(row.post_id)) latest.set(row.post_id, row as PostMetricSnapshot);
   }
   const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
-  const rows = posts.map((post) => ({ post, metric: latest.get(post.id) ?? null }));
+  const templateNames = new Map(templates.map((template) => [template.id, template.name]));
+  const rows = posts.map((post) => ({
+    post,
+    metric: latest.get(post.id) ?? null,
+    credits: post.generation_id ? creditsByGeneration.get(post.generation_id) ?? 0 : 0,
+    hour: post.posted_at ? localParts(new Date(post.posted_at), settings.timezone).hour : null,
+  }));
   const totals = rows.reduce((sum, row) => ({
     posts: sum.posts + 1,
     measured: sum.measured + (row.metric ? 1 : 0),
@@ -98,7 +120,8 @@ export async function analyticsReport() {
     comments: sum.comments + (row.metric?.comments ?? 0),
     shares: sum.shares + (row.metric?.shares ?? 0),
     viralScore: sum.viralScore + Number(row.metric?.viral_score ?? 0),
-  }), { posts: 0, measured: 0, reactions: 0, comments: 0, shares: 0, viralScore: 0 });
+    credits: sum.credits + row.credits,
+  }), { posts: 0, measured: 0, reactions: 0, comments: 0, shares: 0, viralScore: 0, credits: 0 });
 
   const grouped = new Map<string, { agentId: string | null; agentName: string; posts: number; measured: number; reactions: number; comments: number; shares: number; viralScore: number }>();
   for (const row of rows) {
@@ -113,11 +136,59 @@ export async function analyticsReport() {
     grouped.set(key, current);
   }
 
+  function breakdown(getLabel: (row: typeof rows[number]) => string) {
+    const groups = new Map<string, { label: string; posts: number; measured: number; shares: number; viralScore: number; credits: number }>();
+    for (const row of rows) {
+      const label = getLabel(row);
+      const current = groups.get(label) ?? { label, posts: 0, measured: 0, shares: 0, viralScore: 0, credits: 0 };
+      current.posts += 1;
+      current.credits += row.credits;
+      if (row.metric) {
+        current.measured += 1;
+        current.shares += row.metric.shares;
+        current.viralScore += Number(row.metric.viral_score);
+      }
+      groups.set(label, current);
+    }
+    return [...groups.values()].map((item) => ({
+      ...item,
+      averageScore: item.measured ? Number((item.viralScore / item.measured).toFixed(1)) : 0,
+      estimatedUsd: Number((item.credits * KIE_CREDIT_USD).toFixed(4)),
+    })).sort((a, b) => b.averageScore - a.averageScore);
+  }
+
+  const sourceLabels: Record<string, string> = { template: "Template reutilizável", stock: "Foto gratuita", ai: "Imagem por IA" };
+  const languageLabels: Record<string, string> = { "pt-BR": "Português", "en-US": "Inglês", "es-419": "Espanhol", "de-DE": "Alemão", "fr-FR": "Francês" };
+  const breakdowns = {
+    imageSource: breakdown((row) => sourceLabels[row.post.image_source] ?? row.post.image_source),
+    language: breakdown((row) => languageLabels[row.post.content_language ?? ""] ?? row.post.content_language ?? "Sem idioma registrado"),
+    hour: breakdown((row) => row.hour == null ? "Sem horário" : `${String(row.hour).padStart(2, "0")}:00`),
+    template: breakdown((row) => row.post.template_id ? templateNames.get(row.post.template_id) ?? "Template removido" : "Sem template"),
+  };
+  const recommendations: string[] = [];
+  if (totals.measured === 0) {
+    recommendations.push("Sincronize as métricas após reconectar a Meta para liberar comparações e recomendações.");
+  } else {
+    const bestSource = breakdowns.imageSource.find((item) => item.measured > 0);
+    const bestHour = breakdowns.hour.find((item) => item.measured > 0 && item.label !== "Sem horário");
+    const bestLanguage = breakdowns.language.find((item) => item.measured > 0 && item.label !== "Sem idioma registrado");
+    if (bestSource) recommendations.push(`${bestSource.label} lidera com média de ${bestSource.averageScore} pontos virais por post medido.`);
+    if (bestHour) recommendations.push(`O horário com melhor média até agora é ${bestHour.label}; teste mais publicações próximas desse horário antes de torná-lo padrão.`);
+    if (bestLanguage) recommendations.push(`${bestLanguage.label} apresenta a melhor média atual entre os idiomas medidos.`);
+    if (totals.shares === 0) recommendations.push("Ainda não houve compartilhamentos nos posts medidos; teste ganchos mais curtos e mensagens que funcionem fora do contexto da legenda.");
+  }
+
   return {
-    totals,
+    totals: {
+      ...totals,
+      credits: Number(totals.credits.toFixed(3)),
+      estimatedUsd: Number((totals.credits * KIE_CREDIT_USD).toFixed(4)),
+    },
     lastSyncedAt: [...latest.values()].map((item) => item.fetched_at).sort().at(-1) ?? null,
     agents: [...grouped.values()].sort((a, b) => b.viralScore - a.viralScore),
-    topPosts: rows.filter((row) => row.metric).sort((a, b) => Number(b.metric!.viral_score) - Number(a.metric!.viral_score)).slice(0, 20).map(({ post, metric }) => ({
+    breakdowns,
+    recommendations,
+    topPosts: rows.filter((row) => row.metric).sort((a, b) => Number(b.metric!.viral_score) - Number(a.metric!.viral_score)).slice(0, 20).map(({ post, metric, credits, hour }) => ({
       id: post.id,
       title: post.title,
       pageName: post.page_name,
@@ -126,6 +197,11 @@ export async function analyticsReport() {
       agentId: post.agent_id ?? null,
       agentName: post.agent_id ? agentNames.get(post.agent_id) ?? "Agente removido" : "Redator global",
       language: post.content_language ?? null,
+      imageSource: post.image_source,
+      templateName: post.template_id ? templateNames.get(post.template_id) ?? "Template removido" : null,
+      postingHour: hour,
+      credits,
+      estimatedUsd: Number((credits * KIE_CREDIT_USD).toFixed(4)),
       reactions: metric!.reactions,
       comments: metric!.comments,
       shares: metric!.shares,

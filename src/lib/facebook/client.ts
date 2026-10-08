@@ -146,7 +146,6 @@ export const REQUIRED_PERMISSIONS = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
-  "pages_read_user_content",
 ];
 
 /**
@@ -216,15 +215,29 @@ export async function fetchPostEngagement(
   permalinkUrl: string | null;
   raw: Record<string, unknown>;
 }> {
-  const data = await graph(`/${encodeURIComponent(facebookPostId)}`, {
-    access_token: pageToken,
-    fields: "permalink_url,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)",
-  });
+  const path = `/${encodeURIComponent(facebookPostId)}`;
+  let commentsAvailable = true;
+  let data;
+  try {
+    data = await graph(path, {
+      access_token: pageToken,
+      fields: "permalink_url,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)",
+    });
+  } catch (error) {
+    // Visitor-content access is optional and must never block login or the
+    // remaining Page metrics available through pages_read_engagement.
+    if (!(error instanceof Error) || !/pages_read_user_content/i.test(error.message)) throw error;
+    commentsAvailable = false;
+    data = await graph(path, {
+      access_token: pageToken,
+      fields: "permalink_url,shares,reactions.limit(0).summary(true)",
+    });
+  }
   return {
     reactions: Math.max(0, Number(data.reactions?.summary?.total_count ?? 0)),
     comments: Math.max(0, Number(data.comments?.summary?.total_count ?? 0)),
     shares: Math.max(0, Number(data.shares?.count ?? 0)),
     permalinkUrl: typeof data.permalink_url === "string" ? data.permalink_url : null,
-    raw: data as Record<string, unknown>,
+    raw: { ...data, comments_available: commentsAvailable } as Record<string, unknown>,
   };
 }

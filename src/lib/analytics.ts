@@ -71,8 +71,8 @@ export async function syncPublishedPostMetrics(options: {
       updated += 1;
     } catch (error) {
       const original = error instanceof Error ? error.message : String(error);
-      const message = /pages_read_user_content/i.test(original)
-        ? "Reconecte o Facebook concedendo pages_read_user_content para ler reações e comentários."
+      const message = /pages_read_engagement/i.test(original)
+        ? "Reconecte o Facebook concedendo pages_read_engagement para ler as métricas da Página."
         : original;
       failures.push({ postId: post.id, error: message });
     }

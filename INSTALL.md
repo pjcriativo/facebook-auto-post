@@ -197,9 +197,8 @@ list, and click **Add** next to:
 
 - **`pages_manage_posts`** — lets the app create the post
 - **`pages_read_engagement`** — lets it read the Page it posts to
-- **`pages_read_user_content`** — lets the Metrics dashboard count reactions and comments
 
-You should end up seeing all five permissions. Skip this and everything still
+You should end up seeing the required Page permissions. Skip this and everything still
 connects, then publishing fails with a bare *"(#200) Permissions error"*.
 
 > Replace `YOUR-APP-ID` with your App ID. Once you have saved your credentials in

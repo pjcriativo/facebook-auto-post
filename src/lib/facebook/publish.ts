@@ -1,4 +1,4 @@
-import { publishPhoto, NoPageSelectedError } from "@/lib/facebook/client";
+import { fetchPage, publishPhoto, NoPageSelectedError } from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { composeMessage } from "@/lib/types";
@@ -15,13 +15,14 @@ export async function publishPostNow(postId: string): Promise<Post> {
 
   const settings = await getSettings();
 
-  // A post carries the Page it was written for, but the token lives in
-  // settings, so a Page that is no longer the selected one cannot be posted to.
+  // A manual post may target any Page shown in the selector. Keep the cached
+  // token for the default Page, but mint the chosen Page's token server-side
+  // when it differs (or when no default has been configured yet).
   const pageId = post.page_id ?? settings.default_page_id;
-  const pageToken =
+  let pageToken =
     post.page_id && post.page_id !== settings.default_page_id ? null : settings.default_page_token;
 
-  if (!pageId || !pageToken) {
+  if (!pageId) {
     return updatePostRecord(postId, {
       status: "failed",
       error_message: new NoPageSelectedError().message,
@@ -29,6 +30,10 @@ export async function publishPostNow(postId: string): Promise<Post> {
   }
 
   try {
+    if (!pageToken) {
+      const selectedPage = await fetchPage(pageId);
+      pageToken = selectedPage.access_token;
+    }
     const result = await publishPhoto({
       pageId,
       pageToken,

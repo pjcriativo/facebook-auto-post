@@ -19,7 +19,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { ImageSourcePref } from "@/lib/types";
+import type { ContentTemplate, ImageSourcePref } from "@/lib/types";
 
 const TIMEZONES = [
   "America/Sao_Paulo",
@@ -48,7 +48,10 @@ interface SettingsState {
   /** The secret itself never reaches the browser — only whether one is stored. */
   facebook_app_secret_set?: boolean;
   facebook_user_name: string | null;
+  default_page_id?: string | null;
   default_page_name: string | null;
+  default_template_id?: string | null;
+  facebook_page_ready?: boolean;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;
@@ -56,6 +59,29 @@ interface SettingsState {
   posting_hours: number[];
   timezone: string;
   topic_source?: "mine" | "trending" | "mixed";
+}
+
+function Ready({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <div className={`flex items-center gap-2 ${ok ? "text-success" : "text-muted-foreground"}`}>
+      {ok ? <CheckCircle size={16} weight="fill" /> : <WarningCircle size={16} />}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+interface AutomationStatus {
+  connected: boolean;
+  defaultPage: string | null;
+  pageAccess: boolean;
+  pageError: string | null;
+  missingPermissions: string[];
+  aiTextReady: boolean;
+  templateRequired: boolean;
+  templateReady: boolean;
+  preferredTemplate: { id: string; name: string } | null;
+  cronConfigured: boolean;
+  autopilotEnabled: boolean;
 }
 
 export default function SettingsPage() {
@@ -73,6 +99,8 @@ function SettingsForm() {
   const [saved, setSaved] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<ContentTemplate[]>([]);
+  const [automation, setAutomation] = useState<AutomationStatus | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
@@ -107,11 +135,13 @@ function SettingsForm() {
   const oauthMessage = params.get("message");
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then(async (r) => {
+    Promise.all([fetch("/api/settings"), fetch("/api/templates"), fetch("/api/automation/status")])
+      .then(async ([r, templatesResponse, automationResponse]) => {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "Não foi possível carregar as configurações.");
         setSettings(data);
+        if (templatesResponse.ok) setTemplates((await templatesResponse.json()).templates ?? []);
+        if (automationResponse.ok) setAutomation(await automationResponse.json());
         setFullName(data.admin_full_name ?? "");
         setProfileEmail(data.admin_email ?? "");
         setAppId(data.facebook_app_id ?? "");
@@ -261,6 +291,7 @@ function SettingsForm() {
     if (res.ok) {
       const data = await res.json();
       setSettings((s) => (s ? { ...s, ...data } : s));
+      fetch("/api/automation/status").then((response) => response.ok ? response.json() : null).then((status) => status && setAutomation(status)).catch(() => {});
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
@@ -742,6 +773,41 @@ function SettingsForm() {
           <p className="mt-3 text-xs text-warning">
             Defina uma Página padrão na tela Páginas — o piloto automático precisa dela para publicar.
           </p>
+        )}
+
+        <div className="mt-4 rounded-xl border border-border bg-background p-4">
+          <p className="text-sm font-semibold text-foreground">Pronto para funcionar sozinho?</p>
+          <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <Ready ok={Boolean(automation?.connected)} label="Facebook conectado" />
+            <Ready ok={Boolean(automation?.defaultPage && automation?.pageAccess)} label={automation?.defaultPage ? `Página padrão: ${automation.defaultPage}` : "Página padrão definida"} />
+            <Ready ok={Boolean(automation?.aiTextReady)} label="API de texto configurada" />
+            <Ready ok={Boolean(automation?.templateReady)} label={automation?.templateRequired ? "Template automático disponível" : "Fonte de imagem disponível"} />
+            <Ready ok={Boolean(automation?.cronConfigured)} label="Agendador protegido na Vercel" />
+            <Ready ok={settings.auto_post_enabled} label="Piloto automático ativado" />
+          </div>
+          {automation?.missingPermissions?.length ? <p className="mt-3 text-xs text-destructive">Permissões ausentes na Meta: {automation.missingPermissions.join(", ")}.</p> : null}
+          {automation?.pageError ? <p className="mt-2 text-xs text-destructive">{automation.pageError}</p> : null}
+          <p className="mt-3 text-xs text-muted-foreground">A Vercel executa o horário das 9h mesmo com seu computador desligado. Para 13h e 18h no plano gratuito, será necessário adicionar um agendador externo.</p>
+        </div>
+
+        {settings.image_source === "template" && (
+          <div className="mt-4">
+            <label className="text-xs font-semibold text-muted-foreground">Template usado pelo piloto automático</label>
+            <select
+              value={settings.default_template_id ?? ""}
+              onChange={(event) => {
+                const value = event.target.value || null;
+                setSettings({ ...settings, default_template_id: value });
+                save({ default_template_id: value });
+              }}
+              className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+            >
+              <option value="">Selecionar automaticamente o primeiro compatível</option>
+              {templates.filter((template) => template.enabled && (!template.page_id || template.page_id === settings.default_page_id)).map((template) => (
+                <option key={template.id} value={template.id}>{template.name} · {template.niche}</option>
+              ))}
+            </select>
+          </div>
         )}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">

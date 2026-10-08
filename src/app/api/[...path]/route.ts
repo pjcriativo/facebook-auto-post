@@ -58,6 +58,7 @@ import {
   fetchPage,
   fetchPages,
   missingPermissions,
+  REQUIRED_PERMISSIONS,
   FacebookNotConnectedError,
 } from "@/lib/facebook/client";
 import {
@@ -250,6 +251,46 @@ export async function GET(req: Request, ctx: Ctx) {
 
     if (route === "templates") {
       return json({ templates: await listTemplates() });
+    }
+
+    if (route === "automation/status") {
+      const settings = await getSettings();
+      const templates = await listTemplates();
+      const compatibleTemplates = templates.filter(
+        (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
+      );
+      let missing = settings.facebook_user_token ? [] : [...REQUIRED_PERMISSIONS];
+      let pageAccess = false;
+      let pageError: string | null = null;
+      if (settings.facebook_user_token) {
+        missing = await missingPermissions(settings.facebook_user_token);
+      }
+      if (settings.default_page_id) {
+        try {
+          await fetchPage(settings.default_page_id);
+          pageAccess = true;
+        } catch (error) {
+          pageError = error instanceof Error ? error.message : "Não foi possível validar a Página.";
+        }
+      }
+      const credentials = await getAiCredentials();
+      const preferredTemplate = compatibleTemplates.find((item) => item.id === settings.default_template_id) ?? compatibleTemplates[0] ?? null;
+      return json({
+        connected: Boolean(settings.facebook_user_token),
+        defaultPage: settings.default_page_name,
+        pageAccess,
+        pageError,
+        missingPermissions: missing,
+        aiTextReady: Boolean(
+          (credentials.kieEnabled && credentials.kieApiKey) ||
+          credentials.groqApiKey || credentials.geminiApiKey || credentials.pollinationsApiKey
+        ),
+        templateRequired: settings.image_source === "template",
+        templateReady: settings.image_source !== "template" || Boolean(preferredTemplate),
+        preferredTemplate: preferredTemplate ? { id: preferredTemplate.id, name: preferredTemplate.name } : null,
+        cronConfigured: Boolean(env.cronSecret),
+        autopilotEnabled: settings.auto_post_enabled,
+      });
     }
 
     if (route === "usage/summary") {
@@ -796,6 +837,7 @@ const SettingsBody = z.object({
   posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
   timezone: z.string().min(1).max(64).optional(),
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
+  default_template_id: z.string().uuid().nullable().optional(),
 });
 
 const ProfileBody = z.object({

@@ -63,6 +63,8 @@ export interface AppSettings {
   default_page_name: string | null;
   /** Page tokens derived from a long-lived user token do not expire. */
   default_page_token: string | null;
+  /** Preferred reusable design for unattended posts; falls back to the first compatible template. */
+  default_template_id?: string | null;
   image_source: ImageSourcePref;
   utm_suffix: string;
   auto_post_enabled: boolean;

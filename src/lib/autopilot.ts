@@ -99,9 +99,10 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   const content = await generateContent(topic, generationId);
   let image;
   if (settings.image_source === "template") {
-    const template = (await listTemplates()).find(
+    const compatible = (await listTemplates()).filter(
       (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
     );
+    const template = compatible.find((item) => item.id === settings.default_template_id) ?? compatible[0];
     if (!template) throw new Error("Ative pelo menos um template para o piloto automático.");
     image = await renderTemplate(
       template,
@@ -131,7 +132,9 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   if (chosen.topic) await markTopicUsed(chosen.topic);
 
   const published = await publishPostNow(draft.id);
-  await updateSettings({ last_auto_post_at: new Date().toISOString() });
+  if (published.status === "posted") {
+    await updateSettings({ last_auto_post_at: new Date().toISOString() });
+  }
 
   return { ran: true, post: published };
 }

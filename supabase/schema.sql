@@ -52,6 +52,7 @@ create table if not exists app_settings (
   default_page_id text,
   default_page_name text,
   default_page_token text,
+  default_template_id uuid,
   image_source text not null default 'ai',        -- 'ai' | 'stock' | 'mixed'
   utm_suffix text default '',
   auto_post_enabled boolean not null default false,
@@ -230,6 +231,7 @@ alter table app_settings add column if not exists kie_image_fallback_model text 
 alter table app_settings add column if not exists kie_daily_credit_limit numeric default 100;
 alter table app_settings add column if not exists kie_low_balance_threshold numeric not null default 100;
 alter table app_settings add column if not exists kie_webhook_hmac_key text;
+alter table app_settings add column if not exists default_template_id uuid;
 alter table pages_cache add column if not exists username text;
 alter table pages_cache add column if not exists picture_url text;
 alter table content_templates add column if not exists niche text not null default 'Geral';

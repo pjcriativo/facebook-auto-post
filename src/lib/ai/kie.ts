@@ -117,7 +117,7 @@ async function runTextModel(model: string, messages: ChatMessage[], apiKey: stri
   });
 }
 
-export async function kieChatCompletion(model: string, messages: ChatMessage[]) {
+export async function kieChatCompletion(model: string, messages: ChatMessage[], generationId?: string) {
   const credentials = await getAiCredentials();
   if (!credentials.kieApiKey || !credentials.kieEnabled) {
     throw new Error("A geração de texto pela Kie.ai não está ativada.");
@@ -146,6 +146,7 @@ export async function kieChatCompletion(model: string, messages: ChatMessage[]) 
       creditsUsed: Number(data.credits_consumed ?? 0),
       status: "success",
       latencyMs: Date.now() - started,
+      generationId,
     });
     return content;
   } catch (error) {
@@ -156,6 +157,7 @@ export async function kieChatCompletion(model: string, messages: ChatMessage[]) 
       status: "failed",
       latencyMs: Date.now() - started,
       errorMessage: error instanceof Error ? error.message : String(error),
+      generationId,
     });
     throw error;
   }
@@ -189,7 +191,7 @@ async function submitImageTask(model: string, prompt: string, apiKey: string, ca
   return taskId;
 }
 
-export async function createKieImageJob(prompt: string): Promise<AiGenerationJob> {
+export async function createKieImageJob(prompt: string, generationId?: string): Promise<AiGenerationJob> {
   const credentials = await getAiCredentials();
   if (!credentials.kieApiKey || !credentials.kieEnabled || !credentials.kieImageEnabled) {
     throw new Error("A geração de imagens pela Kie.ai não está ativada.");
@@ -216,6 +218,7 @@ export async function createKieImageJob(prompt: string): Promise<AiGenerationJob
       model: credentials.kieImageModel,
       fallback_model: credentials.kieImageFallbackModel || null,
       prompt,
+      generation_id: generationId ?? null,
     })
     .select()
     .single();
@@ -279,7 +282,7 @@ export async function refreshKieImageJob(id: string): Promise<AiGenerationJob> {
     const fallback = await replaceWithFallback(job, credentials.kieApiKey).catch(() => null);
     if (fallback) return fallback;
     const message = task?.failMsg || "A geração de imagem da Kie.ai falhou.";
-    await recordAiUsage({ provider: "kie", operation: "image", model: job.model, status: "failed", errorMessage: message });
+    await recordAiUsage({ provider: "kie", operation: "image", model: job.model, status: "failed", errorMessage: message, generationId: job.generation_id ?? undefined });
     try {
       const legacy = await generateImage(job.prompt, "ai");
       const { data } = await db
@@ -322,7 +325,7 @@ export async function refreshKieImageJob(id: string): Promise<AiGenerationJob> {
     .eq("id", job.id)
     .select()
     .single();
-  await recordAiUsage({ provider: "kie", operation: "image", model: job.model, creditsUsed: credits, status: "success" });
+  await recordAiUsage({ provider: "kie", operation: "image", model: job.model, creditsUsed: credits, status: "success", generationId: job.generation_id ?? undefined });
   return data as AiGenerationJob;
 }
 

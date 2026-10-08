@@ -194,6 +194,14 @@ interface Integrations {
   };
 }
 
+interface UsageSummary {
+  balance: number | null;
+  today: { credits: number; estimatedUsd: number };
+  sevenDays: { credits: number; estimatedUsd: number };
+  thirtyDays: { credits: number; estimatedUsd: number };
+  recent: Array<{ operation: string; model: string; credits: number; status: string; createdAt: string }>;
+}
+
 const PROVIDERS: Array<{
   id: Provider;
   name: string;
@@ -252,6 +260,7 @@ const PROVIDERS: Array<{
 
 export default function ApisPage() {
   const [data, setData] = useState<Integrations | null>(null);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [keys, setKeys] = useState<Record<Provider, string>>({
     kie: "",
     groq: "",
@@ -281,10 +290,11 @@ export default function ApisPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
-    const res = await fetch("/api/integrations");
+    const [res, usageRes] = await Promise.all([fetch("/api/integrations"), fetch("/api/usage/summary")]);
     const body = await res.json();
     if (!res.ok) throw new Error(body.error ?? "Não foi possível carregar as APIs.");
     setData(body);
+    if (usageRes.ok) setUsage(await usageRes.json());
     setModels({
       kieText: body.providers.kie.textModel,
       kieTextFallback: body.providers.kie.textFallbackModel,
@@ -437,6 +447,28 @@ export default function ApisPage() {
           </div>
         </div>
       </Card>
+
+      {usage && (
+        <Card>
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div>
+              <h2 className="font-heading font-bold text-foreground">Consumo e custos</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Acompanhe os créditos sem precisar abrir o painel da Kie.ai. A conversão em dólar é uma estimativa.</p>
+            </div>
+            <div className="rounded-xl bg-primary/10 px-4 py-2 text-right">
+              <span className="block text-xs text-muted-foreground">Saldo atual Kie.ai</span>
+              <strong className="text-lg text-primary">{usage.balance === null ? "Indisponível" : `${usage.balance.toFixed(2)} créditos`}</strong>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[["Últimas 24 horas", usage.today], ["Últimos 7 dias", usage.sevenDays], ["Últimos 30 dias", usage.thirtyDays]].map(([label, period]) => {
+              const value = period as { credits: number; estimatedUsd: number };
+              return <div key={label as string} className="rounded-xl border border-border bg-background p-3"><span className="text-xs text-muted-foreground">{label as string}</span><strong className="mt-1 block text-lg">{value.credits.toFixed(3)} créditos</strong><span className="text-xs text-muted-foreground">≈ US$ {value.estimatedUsd.toFixed(4)}</span></div>;
+            })}
+          </div>
+          {usage.recent.length > 0 && <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-xs"><thead className="text-muted-foreground"><tr><th className="pb-2">Operação</th><th className="pb-2">Modelo</th><th className="pb-2 text-right">Créditos</th></tr></thead><tbody>{usage.recent.slice(0, 6).map((item, index) => <tr key={`${item.createdAt}-${index}`} className="border-t border-border"><td className="py-2">{item.operation === "text" ? "Texto" : "Imagem"}</td><td className="py-2">{item.model}</td><td className="py-2 text-right">{item.credits.toFixed(3)}</td></tr>)}</tbody></table></div>}
+        </Card>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {PROVIDERS.map((provider) => {

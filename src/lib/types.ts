@@ -91,6 +91,7 @@ export interface Post {
   posted_at: string | null;
   facebook_post_id: string | null;
   error_message: string | null;
+  generation_id?: string | null;
   created_at: string;
 }
 
@@ -98,6 +99,8 @@ export interface PageCache {
   page_id: string;
   name: string;
   category: string | null;
+  username?: string | null;
+  picture_url?: string | null;
   fetched_at: string;
 }
 
@@ -118,6 +121,7 @@ export interface AiGenerationJob {
   result_url: string | null;
   error_message: string | null;
   credits_used: number | null;
+  generation_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -136,7 +140,11 @@ export interface GeneratedContent {
 export interface ContentTemplate {
   id: string;
   name: string;
-  layout: "viral_quote";
+  layout: "viral_quote" | "centered_quote" | "bold_statement";
+  niche: string;
+  description: string;
+  page_id: string | null;
+  identity_source: "profile" | "page" | "custom";
   avatar_url: string | null;
   handle: string;
   background_color: string;

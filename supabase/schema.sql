@@ -85,6 +85,7 @@ create table if not exists posts (
   posted_at timestamptz,
   facebook_post_id text,
   error_message text,
+  generation_id uuid,
   created_at timestamptz not null default now()
 );
 
@@ -96,6 +97,8 @@ create table if not exists pages_cache (
   page_id text primary key,
   name text not null,
   category text,
+  username text,
+  picture_url text,
   fetched_at timestamptz not null default now()
 );
 
@@ -117,6 +120,10 @@ create table if not exists content_templates (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   layout text not null default 'viral_quote',
+  niche text not null default 'Geral',
+  description text not null default '',
+  page_id text,
+  identity_source text not null default 'profile',
   avatar_url text,
   handle text not null default '@seuperfil',
   background_color text not null default '#000000',
@@ -133,6 +140,7 @@ on conflict (id) do nothing;
 -- Case-insensitive uniqueness, so pasting the same list twice adds nothing.
 create unique index if not exists topics_text_lower_idx on topics (lower(text));
 create index if not exists topics_rotation_idx on topics (enabled, last_used_at nulls first);
+create index if not exists content_templates_page_niche_idx on content_templates (page_id, niche, enabled);
 
 create table if not exists ai_generation_jobs (
   id uuid primary key default gen_random_uuid(),
@@ -147,6 +155,7 @@ create table if not exists ai_generation_jobs (
   result_url text,
   error_message text,
   credits_used numeric,
+  generation_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -160,10 +169,13 @@ create table if not exists ai_usage (
   status text not null,
   latency_ms integer,
   error_message text,
+  generation_id uuid,
+  metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
 create index if not exists ai_usage_provider_created_idx on ai_usage (provider, created_at desc);
+create index if not exists ai_usage_generation_idx on ai_usage (generation_id, created_at);
 create index if not exists ai_generation_jobs_status_idx on ai_generation_jobs (status, created_at);
 
 -- The app accesses these tables exclusively from server code with the service
@@ -218,3 +230,13 @@ alter table app_settings add column if not exists kie_image_fallback_model text 
 alter table app_settings add column if not exists kie_daily_credit_limit numeric default 100;
 alter table app_settings add column if not exists kie_low_balance_threshold numeric not null default 100;
 alter table app_settings add column if not exists kie_webhook_hmac_key text;
+alter table pages_cache add column if not exists username text;
+alter table pages_cache add column if not exists picture_url text;
+alter table content_templates add column if not exists niche text not null default 'Geral';
+alter table content_templates add column if not exists description text not null default '';
+alter table content_templates add column if not exists page_id text;
+alter table content_templates add column if not exists identity_source text not null default 'profile';
+alter table ai_generation_jobs add column if not exists generation_id uuid;
+alter table ai_usage add column if not exists generation_id uuid;
+alter table ai_usage add column if not exists metadata jsonb not null default '{}'::jsonb;
+alter table posts add column if not exists generation_id uuid;

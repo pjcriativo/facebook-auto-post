@@ -42,7 +42,8 @@ import {
   listTemplates,
   updateTemplate,
 } from "@/lib/db/templates";
-import { renderTemplate } from "@/lib/templates/render";
+import { renderTemplate, renderTemplatePng } from "@/lib/templates/render";
+import { generationUsage, usageDashboard } from "@/lib/ai/usage";
 import {
   addTopics,
   deleteTopic,
@@ -251,6 +252,28 @@ export async function GET(req: Request, ctx: Ctx) {
       return json({ templates: await listTemplates() });
     }
 
+    if (route === "usage/summary") {
+      const credentials = await getAiCredentials();
+      let balance: number | null = null;
+      if (credentials.kieApiKey) {
+        try {
+          const response = await fetch("https://api.kie.ai/api/v1/chat/credit", {
+            headers: { Authorization: `Bearer ${credentials.kieApiKey}` },
+            signal: AbortSignal.timeout(15_000),
+          });
+          const body = await response.json();
+          if (response.ok && body?.code === 200) balance = Number(body.data);
+        } catch {}
+      }
+      return json({ ...(await usageDashboard()), balance });
+    }
+
+    if (path.length === 3 && path[0] === "usage" && path[1] === "generation") {
+      const generationId = z.string().uuid().safeParse(path[2]);
+      if (!generationId.success) return json({ error: "Geração inválida." }, 400);
+      return json(await generationUsage(generationId.data));
+    }
+
     if (route === "posts") {
       const status = url.searchParams.get("status");
       const posts = await listPosts({
@@ -334,11 +357,15 @@ const LoginBody = z.object({
   password: z.string(),
 });
 
-const ContentBody = z.object({ topic: z.string().trim().min(2).max(200) });
+const ContentBody = z.object({
+  topic: z.string().trim().min(2).max(200),
+  generationId: z.string().uuid().optional(),
+});
 
 const ImageBody = z.object({
   prompt: z.string().trim().min(2).max(300),
   source: z.enum(["ai", "stock", "mixed"]),
+  generationId: z.string().uuid().optional(),
 });
 
 const CreatePostBody = z.object({
@@ -349,10 +376,11 @@ const CreatePostBody = z.object({
   imageUrl: z.string().url(),
   imageSource: z.enum(["ai", "stock", "template"]),
   linkUrl: z.string().url().optional().or(z.literal("")),
-  pageId: z.string().min(1),
-  pageName: z.string().min(1),
+  pageId: z.string().min(1).nullable(),
+  pageName: z.string().min(1).nullable(),
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
+  generationId: z.string().uuid().optional(),
 });
 
 const DefaultPageBody = z.object({ pageId: z.string().min(1) });
@@ -388,6 +416,10 @@ const TestProviderBody = z.object({ provider: ProviderName });
 const CreateTemplateBody = z.object({
   name: z.string().trim().min(2).max(80),
   handle: z.string().trim().min(2).max(80),
+  layout: z.enum(["viral_quote", "centered_quote", "bold_statement"]).default("viral_quote"),
+  niche: z.string().trim().min(2).max(80).default("Geral"),
+  page_id: z.string().trim().min(1).nullable().optional(),
+  identity_source: z.enum(["profile", "page", "custom"]).default("profile"),
 });
 const RenderTemplateBody = z.object({
   templateId: z.string().uuid(),
@@ -521,7 +553,7 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "templates") {
       const parsed = CreateTemplateBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe um nome e um @perfil válidos." }, 400);
-      return json({ template: await createTemplate(parsed.data) }, 201);
+      return json({ template: await createTemplate({ ...parsed.data, page_id: parsed.data.page_id ?? null }) }, 201);
     }
 
     if (route === "templates/render") {
@@ -530,6 +562,17 @@ export async function POST(req: Request, ctx: Ctx) {
       const template = await getTemplate(parsed.data.templateId);
       if (!template || !template.enabled) return json({ error: "Template não encontrado ou desativado." }, 404);
       return json(await renderTemplate(template, parsed.data.text));
+    }
+
+    if (route === "templates/preview") {
+      const parsed = RenderTemplateBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Template ou texto inválido." }, 400);
+      const template = await getTemplate(parsed.data.templateId);
+      if (!template || !template.enabled) return json({ error: "Template não encontrado ou desativado." }, 404);
+      const png = await renderTemplatePng(template, parsed.data.text);
+      return new NextResponse(new Uint8Array(png), {
+        headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+      });
     }
 
     if (route === "templates/avatar") {
@@ -560,7 +603,10 @@ export async function POST(req: Request, ctx: Ctx) {
       });
       if (error) return json({ error: `Não foi possível enviar a foto: ${error.message}` }, 502);
       const { data } = db.storage.from("post-images").getPublicUrl(path);
-      const updated = await updateTemplate(templateId, { avatar_url: data.publicUrl });
+      const updated = await updateTemplate(templateId, {
+        avatar_url: data.publicUrl,
+        identity_source: "custom",
+      });
       const marker = "/storage/v1/object/public/post-images/";
       const oldPath = existing.avatar_url?.split(marker)[1]?.split("?")[0];
       if (oldPath) await db.storage.from("post-images").remove([decodeURIComponent(oldPath)]);
@@ -570,7 +616,7 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe um tema com 2 a 200 caracteres." }, 400);
-      return json(await generateContent(parsed.data.topic));
+      return json(await generateContent(parsed.data.topic, parsed.data.generationId));
     }
 
     if (route === "generate/image") {
@@ -586,7 +632,7 @@ export async function POST(req: Request, ctx: Ctx) {
           credentials.kieImageEnabled
         ) {
           try {
-            const job = await createKieImageJob(parsed.data.prompt);
+            const job = await createKieImageJob(parsed.data.prompt, parsed.data.generationId);
             return json({ jobId: job.id, status: job.status }, 202);
           } catch (error) {
             console.warn("[generate/image] Kie.ai unavailable; using existing fallback:", error);
@@ -620,6 +666,7 @@ export async function POST(req: Request, ctx: Ctx) {
         page_name: b.pageName,
         scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
         status: b.action === "schedule" ? "scheduled" : "draft",
+        generation_id: b.generationId ?? null,
       });
 
       if (b.action === "post_now") {
@@ -773,6 +820,11 @@ const IntegrationBody = z.object({
 const UpdateTemplateBody = z.object({
   name: z.string().trim().min(2).max(80).optional(),
   handle: z.string().trim().min(2).max(80).optional(),
+  layout: z.enum(["viral_quote", "centered_quote", "bold_statement"]).optional(),
+  niche: z.string().trim().min(2).max(80).optional(),
+  description: z.string().trim().max(240).optional(),
+  page_id: z.string().trim().min(1).nullable().optional(),
+  identity_source: z.enum(["profile", "page", "custom"]).optional(),
   background_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   text_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   enabled: z.boolean().optional(),
@@ -999,7 +1051,13 @@ async function getPages(refresh: boolean) {
         await db.from("pages_cache").delete().neq("page_id", "");
         await db
           .from("pages_cache")
-          .insert(pages.map((p) => ({ page_id: p.id, name: p.name, category: p.category })));
+          .insert(pages.map((p) => ({
+            page_id: p.id,
+            name: p.name,
+            category: p.category,
+            username: p.username,
+            picture_url: p.picture_url,
+          })));
       }
     }
 

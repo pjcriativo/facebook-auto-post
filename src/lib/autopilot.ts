@@ -12,6 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { localParts, startOfTodayIso } from "@/lib/time";
 import { isFacebookConnected } from "@/lib/types";
 import type { Post, Topic, TopicSource } from "@/lib/types";
+import { randomUUID } from "node:crypto";
 
 export type AutopilotResult =
   | { ran: true; post: Post }
@@ -94,10 +95,13 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   const chosen = await chooseTopic(settings.topic_source);
   const topic = chosen.text;
 
-  const content = await generateContent(topic);
+  const generationId = randomUUID();
+  const content = await generateContent(topic, generationId);
   let image;
   if (settings.image_source === "template") {
-    const template = (await listTemplates()).find((item) => item.enabled);
+    const template = (await listTemplates()).find(
+      (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
+    );
     if (!template) throw new Error("Ative pelo menos um template para o piloto automático.");
     image = await renderTemplate(
       template,
@@ -119,6 +123,7 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     page_name: settings.default_page_name,
     scheduled_at: null,
     status: "draft",
+    generation_id: generationId,
   });
 
   // Recorded once the draft exists, so a failure while generating does not

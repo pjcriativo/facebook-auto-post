@@ -1,44 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import {
-  Sparkle,
-  ArrowClockwise,
-  FloppyDisk,
-  Rocket,
-  CalendarPlus,
-  X,
-  WarningCircle,
-  CheckCircle,
-  ArrowSquareOut,
-} from "@phosphor-icons/react/dist/ssr";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ArrowClockwise, ArrowSquareOut, CalendarPlus, CheckCircle, FloppyDisk, Rocket, Sparkle, WarningCircle, X } from "@phosphor-icons/react/dist/ssr";
 import { Badge } from "@/components/ui/badge";
-import { facebookPostUrl } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { composeMessage, facebookPostUrl } from "@/lib/types";
 import type { ContentTemplate, GeneratedContent, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
+type Usage = { credits: number; estimatedUsd: number; items: Array<{ provider: string; operation: string; model: string; credits: number }> };
 
 export default function GeneratePage() {
   const [topic, setTopic] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
-  const [imagePref, setImagePref] = useState<ImageSourcePref>("ai");
+  const [imagePref, setImagePref] = useState<ImageSourcePref>("template");
   const [templates, setTemplates] = useState<ContentTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const [niche, setNiche] = useState("Todos");
   const [renderingTemplate, setRenderingTemplate] = useState(false);
-
+  const previewBlob = useRef<string | null>(null);
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
-
   const [content, setContent] = useState<GeneratedContent | null>(null);
   const [image, setImage] = useState<{ url: string; source: ImageSource } | null>(null);
+  const [generationId, setGenerationId] = useState<string | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
-
   const [pages, setPages] = useState<PageCache[]>([]);
   const [pageId, setPageId] = useState("");
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -48,495 +40,137 @@ export default function GeneratePage() {
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    // Arriving from the Topics screen's "write now" link. Read directly rather
-    // than through useSearchParams, which would force a Suspense boundary
-    // around the whole form for one optional value.
     const fromLink = new URLSearchParams(window.location.search).get("topic");
-    if (fromLink) setTopic(fromLink);
-
-    fetch("/api/topics")
-      .then((r) => r.json())
-      .then((d) =>
-        setOwnTopics(
-          (d.topics ?? [])
-            .filter((t: { enabled: boolean }) => t.enabled)
-            .map((t: { text: string }) => t.text)
-        )
-      )
-      .catch(() => {});
-
-    fetch("/api/trends")
-      .then((r) => r.json())
-      .then((d) => setSuggestions(d.topics ?? []))
-      .catch(() => {});
-
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((d) => setImagePref(d.image_source ?? "ai"))
-      .catch(() => {});
-
-    fetch("/api/facebook/pages")
-      .then((r) => r.json())
-      .then((d) => {
-        setPages(d.pages ?? []);
-        if (d.defaultPageId) setPageId(d.defaultPageId);
-      })
-      .catch(() => {});
-
-    fetch("/api/templates")
-      .then((r) => r.json())
-      .then((d) => {
-        const enabled = (d.templates ?? []).filter((template: ContentTemplate) => template.enabled);
-        setTemplates(enabled);
-        setTemplateId(enabled[0]?.id ?? "");
-      })
-      .catch(() => {});
+    if (fromLink) void Promise.resolve(fromLink).then(setTopic);
+    void Promise.all([
+      fetch("/api/topics").then((r) => r.json()).then((d) => setOwnTopics((d.topics ?? []).filter((t: { enabled: boolean }) => t.enabled).map((t: { text: string }) => t.text))),
+      fetch("/api/trends").then((r) => r.json()).then((d) => setSuggestions(d.topics ?? [])),
+      fetch("/api/settings").then((r) => r.json()).then((d) => setImagePref(d.image_source ?? "template")),
+      fetch("/api/facebook/pages").then((r) => r.json()).then((d) => { setPages(d.pages ?? []); if (d.defaultPageId) setPageId(d.defaultPageId); }),
+      fetch("/api/templates").then((r) => r.json()).then((d) => { const enabled = (d.templates ?? []).filter((item: ContentTemplate) => item.enabled); setTemplates(enabled); setTemplateId(enabled[0]?.id ?? ""); }),
+    ]).catch(() => {});
+    return () => { if (previewBlob.current) URL.revokeObjectURL(previewBlob.current); };
   }, []);
 
-  const selectedPage = useMemo(() => pages.find((p) => p.page_id === pageId), [pages, pageId]);
+  const selectedPage = useMemo(() => pages.find((page) => page.page_id === pageId), [pages, pageId]);
+  const compatibleTemplates = useMemo(() => templates.filter((item) => (!item.page_id || item.page_id === pageId) && (niche === "Todos" || item.niche === niche)), [templates, pageId, niche]);
+  const niches = useMemo(() => ["Todos", ...new Set(templates.filter((item) => !item.page_id || item.page_id === pageId).map((item) => item.niche))], [templates, pageId]);
+  const selectedTemplate = templates.find((item) => item.id === templateId);
+  const postMessage = content ? composeMessage({ title: content.title, description: content.description, hashtags: content.hashtags, link_url: linkUrl || null }) : "";
 
-  async function waitForImage(jobId: string): Promise<{ url: string; source: ImageSource }> {
+  function setPreviewImage(url: string) {
+    if (previewBlob.current) URL.revokeObjectURL(previewBlob.current);
+    previewBlob.current = url;
+    setImage({ url, source: "template" });
+  }
+
+  async function waitForImage(jobId: string) {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise((resolve) => window.setTimeout(resolve, attempt < 5 ? 2500 : 4000));
-      const response = await fetch(`/api/generate/image/${jobId}`);
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Não foi possível acompanhar a geração da imagem.");
-      if (body.status === "success" && body.image) return body.image;
+      const response = await fetch(`/api/generate/image/${jobId}`); const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Não foi possível acompanhar a imagem.");
+      if (body.status === "success" && body.image) return body.image as { url: string; source: ImageSource };
       if (body.status === "failed") throw new Error(body.error ?? "A geração da imagem falhou.");
     }
     throw new Error("A imagem ainda está sendo gerada. Tente novamente em alguns instantes.");
   }
 
-  async function generate() {
-    if (topic.trim().length < 2) {
-      setError("Informe primeiro um tema com pelo menos algumas palavras.");
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    setPublishedUrl(null);
-    setStep("generating");
-    setContent(null);
-    setImage(null);
-
+  async function renderPreview(text: string) {
+    if (!templateId || !text.trim()) return;
+    setRenderingTemplate(true);
     try {
-      const contentRequest = fetch("/api/generate/content", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topic }),
-        });
-      const imageRequest = imagePref === "template"
-        ? null
-        : fetch("/api/generate/image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: topic, source: imagePref }),
-        });
+      const response = await fetch("/api/templates/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, text }) });
+      if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Não foi possível montar a prévia."); }
+      setPreviewImage(URL.createObjectURL(await response.blob()));
+    } finally { setRenderingTemplate(false); }
+  }
 
+  useEffect(() => {
+    if (step !== "ready" || imagePref !== "template" || !content?.artText || !templateId) return;
+    const timer = window.setTimeout(() => void renderPreview(content.artText!).catch((err) => setError(err instanceof Error ? err.message : "Falha na prévia.")), 500);
+    return () => window.clearTimeout(timer);
+    // Render only when the artwork inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content?.artText, templateId]);
+
+  async function loadUsage(id: string) {
+    const response = await fetch(`/api/usage/generation/${id}`);
+    if (response.ok) setUsage(await response.json());
+  }
+
+  async function generate() {
+    if (topic.trim().length < 2) return setError("Informe primeiro um tema com pelo menos algumas palavras.");
+    if (imagePref === "template" && !templateId) return setError("Escolha um template da galeria ou selecione a opção sem template.");
+    const id = crypto.randomUUID();
+    setGenerationId(id); setUsage(null); setError(null); setSuccess(null); setPublishedUrl(null); setStep("generating"); setContent(null); setImage(null);
+    try {
+      const contentRequest = fetch("/api/generate/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, generationId: id }) });
+      const imageRequest = imagePref === "template" ? null : fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: topic, source: imagePref, generationId: id }) });
       const contentRes = await contentRequest;
-
       if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Não foi possível gerar o conteúdo.");
       const contentData: GeneratedContent = await contentRes.json();
       let imageData: { url: string; source: ImageSource };
-
       if (imagePref === "template") {
-        if (!templateId) throw new Error("Crie e ative um template antes de usar esta opção.");
-        const templateRes = await fetch("/api/templates/render", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            templateId,
-            text: contentData.artText || `${contentData.title}\n\n${contentData.description}`,
-          }),
-        });
-        if (!templateRes.ok) throw new Error((await templateRes.json()).error ?? "Não foi possível montar o template.");
-        imageData = await templateRes.json();
+        const response = await fetch("/api/templates/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, text: contentData.artText || `${contentData.title}\n\n${contentData.description}` }) });
+        if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Não foi possível montar o template."); }
+        const url = URL.createObjectURL(await response.blob()); previewBlob.current = url; imageData = { url, source: "template" };
       } else {
         const imageRes = await imageRequest!;
         if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
-        const responseData = await imageRes.json();
-        imageData = imageRes.status === 202
-          ? await waitForImage(responseData.jobId)
-          : responseData;
+        const data = await imageRes.json(); imageData = imageRes.status === 202 ? await waitForImage(data.jobId) : data;
       }
-
-      setContent(contentData);
-      setImage(imageData);
-      setStep("ready");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Algo deu errado.");
-      setStep("idle");
-    }
+      setContent(contentData); setImage(imageData); setStep("ready"); await loadUsage(id);
+    } catch (err) { setError(err instanceof Error ? err.message : "Algo deu errado."); setStep("idle"); }
   }
 
-  async function updateTemplateArt() {
-    if (!content || !templateId || !content.artText?.trim()) return;
-    setRenderingTemplate(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/templates/render", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ templateId, text: content.artText }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Não foi possível atualizar a arte.");
-      setImage(body);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível atualizar a arte.");
-    } finally {
-      setRenderingTemplate(false);
-    }
-  }
-
-  function removeHashtag(tag: string) {
-    if (!content) return;
-    setContent({ ...content, hashtags: content.hashtags.filter((h) => h !== tag) });
-  }
-
-  function addHashtag() {
-    const tag = hashtagInput.trim().replace(/^#/, "").toLowerCase();
-    if (!tag || !content || content.hashtags.includes(tag)) return;
-    setContent({ ...content, hashtags: [...content.hashtags, tag] });
-    setHashtagInput("");
-  }
+  function removeHashtag(tag: string) { if (content) setContent({ ...content, hashtags: content.hashtags.filter((item) => item !== tag) }); }
+  function addHashtag() { const tag = hashtagInput.trim().replace(/^#/, "").toLowerCase(); if (tag && content && !content.hashtags.includes(tag)) { setContent({ ...content, hashtags: [...content.hashtags, tag] }); setHashtagInput(""); } }
 
   async function save(action: "draft" | "schedule" | "post_now") {
     if (!content || !image) return;
-    if (action !== "draft" && !pageId) {
-      setError("Escolha uma Página antes de agendar ou publicar.");
-      return;
-    }
-    if (action === "schedule" && !scheduledAt) {
-      setError("Escolha uma data e um horário para agendar este post.");
-      return;
-    }
-
-    setError(null);
-    setSaving(action);
+    if (action !== "draft" && !pageId) return setError("Escolha uma Página antes de agendar ou publicar.");
+    if (action === "schedule" && !scheduledAt) return setError("Escolha uma data e um horário.");
+    setError(null); setSaving(action);
     try {
-      const res = await fetch("/api/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topic,
-          title: content.title,
-          description: content.description,
-          hashtags: content.hashtags,
-          imageUrl: image.url,
-          imageSource: image.source,
-          linkUrl: linkUrl || undefined,
-          pageId: pageId || selectedPage?.page_id || "não definido",
-          pageName: selectedPage?.name ?? "Não definida",
-          action,
-          scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Não foi possível salvar o post.");
-
-      if (action === "post_now" && data.post.status === "failed") {
-        throw new Error(data.post.error_message ?? "O Facebook rejeitou este post.");
+      let finalImage = image;
+      if (image.source === "template") {
+        const response = await fetch("/api/templates/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, text: content.artText || `${content.title}\n\n${content.description}` }) });
+        const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar a arte final."); finalImage = body;
       }
-
-      setSuccess(
-        action === "draft"
-          ? "Salvo como rascunho."
-          : action === "schedule"
-            ? "Post agendado."
-            : "Publicado no Facebook 🎉"
-      );
-      setPublishedUrl(
-        action === "post_now" && data.post.facebook_post_id
-          ? facebookPostUrl(data.post.facebook_post_id)
-          : null
-      );
-      setStep("idle");
-      setContent(null);
-      setImage(null);
-      setTopic("");
-      setScheduleOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível salvar o post.");
-    } finally {
-      setSaving(null);
-    }
+      const response = await fetch("/api/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, title: content.title, description: content.description, hashtags: content.hashtags, imageUrl: finalImage.url, imageSource: finalImage.source, linkUrl: linkUrl || undefined, pageId: pageId || null, pageName: selectedPage?.name ?? null, generationId, action, scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined }) });
+      const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Não foi possível salvar o post.");
+      if (action === "post_now" && data.post.status === "failed") throw new Error(data.post.error_message ?? "O Facebook rejeitou este post.");
+      setSuccess(action === "draft" ? "Salvo como rascunho." : action === "schedule" ? "Post agendado." : "Publicado no Facebook 🎉");
+      setPublishedUrl(action === "post_now" && data.post.facebook_post_id ? facebookPostUrl(data.post.facebook_post_id) : null);
+      setStep("idle"); setContent(null); setImage(null); setTopic(""); setScheduleOpen(false);
+    } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível salvar o post."); }
+    finally { setSaving(null); }
   }
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <Card>
-        <label className="text-sm font-semibold text-foreground">Tema</label>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Sobre o que será este post? Seja específico para obter resultados melhores.
-        </p>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-          <input
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && generate()}
-            placeholder="Ex.: ideias de decoração aconchegante para sala"
-            className="flex-1 rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-          />
-          <select
-            value={imagePref}
-            onChange={(e) => setImagePref(e.target.value as ImageSourcePref)}
-            className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
-            aria-label="Fonte da imagem"
-          >
-            <option value="ai">Imagem gerada por IA</option>
-            <option value="stock">Foto gratuita de banco de imagens</option>
-            <option value="mixed">Combinar as duas opções</option>
-            <option value="template">Template reutilizável (sem IA de imagem)</option>
-          </select>
-          {imagePref === "template" && (
-            <select
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-              className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
-              aria-label="Template visual"
-            >
-              {templates.length === 0 ? <option value="">Nenhum template ativo</option> : templates.map((template) => (
-                <option key={template.id} value={template.id}>{template.name}</option>
-              ))}
-            </select>
-          )}
-          <Button onClick={generate} disabled={step === "generating"}>
-            <Sparkle size={16} weight="fill" />
-            {step === "generating" ? "Gerando…" : "Gerar"}
-          </Button>
-        </div>
-
-        {ownTopics.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="mt-1 text-xs font-medium text-muted-foreground">Seus temas:</span>
-            {ownTopics.slice(0, 10).map((t) => (
-              <button
-                key={t}
-                onClick={() => setTopic(t)}
-                className="cursor-pointer rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary transition hover:border-primary"
-              >
-                {t}
-              </button>
-            ))}
-            <Link
-              href="/dashboard/topics"
-              className="mt-0.5 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
-            >
-              Gerenciar
-            </Link>
-          </div>
-        )}
-
-        {suggestions.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="mt-1 text-xs font-medium text-muted-foreground">Ideias em alta:</span>
-            {suggestions.slice(0, 8).map((s) => (
-              <button
-                key={s}
-                onClick={() => setTopic(s)}
-                className="cursor-pointer rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition hover:border-primary hover:text-primary"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
-          <WarningCircle size={18} className="mt-0.5 shrink-0" />
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success">
-          <CheckCircle size={18} className="shrink-0" />
-          {success}
-          {publishedUrl && (
-            <a
-              href={publishedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-semibold underline underline-offset-2"
-            >
-              Ver post <ArrowSquareOut size={13} />
-            </a>
-          )}
-        </div>
-      )}
-
-      {step === "generating" && (
-        <Card className="animate-pulse">
-          <div className="grid gap-6 md:grid-cols-[320px_1fr]">
-            <div className="aspect-square rounded-xl bg-surface-2" />
-            <div className="space-y-3">
-              <div className="h-6 w-3/4 rounded bg-surface-2" />
-              <div className="h-4 w-full rounded bg-surface-2" />
-              <div className="h-4 w-5/6 rounded bg-surface-2" />
-              <div className="h-4 w-2/3 rounded bg-surface-2" />
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {step === "ready" && content && image && (
-        <Card>
-          <div className="grid gap-6 md:grid-cols-[320px_1fr]">
-            <div>
-              <div className="relative aspect-square overflow-hidden rounded-xl bg-surface-2">
-                <Image src={image.url} alt={content.title} fill unoptimized className="object-cover" />
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <Badge>{image.source === "ai" ? "Gerada por IA" : image.source === "template" ? "Template reutilizável" : "Banco de imagens"}</Badge>
-                <button
-                  onClick={generate}
-                  className="flex cursor-pointer items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary"
-                >
-                  <ArrowClockwise size={13} /> Gerar novamente
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {content.provider === "template" ? (
-                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  Nenhum serviço de IA respondeu, então este texto veio de um modelo básico.
-                  Edite-o antes de publicar ou configure e teste uma chave na aba APIs.
-                </p>
-              ) : content.provider ? (
-                <p className="text-xs text-muted-foreground">
-                  Texto criado por <span className="font-medium capitalize">{content.provider}</span>
-                </p>
-              ) : null}
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Chamada inicial</label>
-                <input
-                  value={content.title}
-                  maxLength={120}
-                  onChange={(e) => setContent({ ...content, title: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Descrição</label>
-                <textarea
-                  value={content.description}
-                  maxLength={500}
-                  rows={3}
-                  onChange={(e) => setContent({ ...content, description: e.target.value })}
-                  className="mt-1 w-full resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-
-              {image.source === "template" && (
-                <div>
-                  <label className="text-xs font-semibold text-muted-foreground">Texto dentro da arte</label>
-                  <textarea
-                    value={content.artText ?? ""}
-                    maxLength={700}
-                    rows={6}
-                    onChange={(e) => setContent({ ...content, artText: e.target.value })}
-                    className="mt-1 w-full resize-y rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                  />
-                  <Button className="mt-2" size="sm" variant="secondary" onClick={updateTemplateArt} disabled={renderingTemplate || !content.artText?.trim()}>
-                    <ArrowClockwise size={14} className={renderingTemplate ? "animate-spin" : ""} />
-                    {renderingTemplate ? "Atualizando…" : "Atualizar arte"}
-                  </Button>
-                </div>
-              )}
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Hashtags</label>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {content.hashtags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent"
-                    >
-                      #{tag}
-                      <button onClick={() => removeHashtag(tag)} aria-label={`Remover ${tag}`} className="cursor-pointer">
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    value={hashtagInput}
-                    onChange={(e) => setHashtagInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addHashtag())}
-                    placeholder="adicionar…"
-                    className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none focus:border-primary"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Link (opcional)</label>
-                <input
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  placeholder="https://seu-site.com.br/post"
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Página</label>
-                <select
-                  value={pageId}
-                  onChange={(e) => setPageId(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
-                >
-                  <option value="">Selecione uma Página…</option>
-                  {pages.map((p) => (
-                    <option key={p.page_id} value={p.page_id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-                {pages.length === 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Nenhuma Página encontrada. Conecte o Facebook nas Configurações primeiro.
-                  </p>
-                )}
-              </div>
-
-              {scheduleOpen && (
-                <div>
-                  <label className="text-xs font-semibold text-muted-foreground">Agendar para</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduledAt}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"
-                  />
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}>
-                  <FloppyDisk size={16} /> Salvar rascunho
-                </Button>
-                {scheduleOpen ? (
-                  <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}>
-                    <CalendarPlus size={16} /> {saving === "schedule" ? "Agendando…" : "Confirmar agendamento"}
-                  </Button>
-                ) : (
-                  <Button variant="secondary" onClick={() => setScheduleOpen(true)} disabled={saving !== null}>
-                    <CalendarPlus size={16} /> Agendar
-                  </Button>
-                )}
-                <Button onClick={() => save("post_now")} disabled={saving !== null}>
-                  <Rocket size={16} weight="fill" /> {saving === "post_now" ? "Publicando…" : "Publicar agora"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
+  return <div className="mx-auto max-w-6xl space-y-6">
+    <Card><label className="text-sm font-semibold">1. Página e assunto</label><p className="mt-1 text-sm text-muted-foreground">Escolha primeiro a Página para ver somente os templates compatíveis com ela.</p><div className="mt-3 grid gap-3 md:grid-cols-[260px_1fr_auto]">
+      <select value={pageId} onChange={(event) => { setPageId(event.target.value); setTemplateId(""); }} className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"><option value="">Selecione uma Página…</option>{pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}</select>
+      <input value={topic} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => event.key === "Enter" && generate()} placeholder="Ex.: uma oração para começar bem o dia" className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/>
+      <Button onClick={generate} disabled={step === "generating"}><Sparkle size={16} weight="fill"/> {step === "generating" ? "Gerando…" : "Gerar post"}</Button>
     </div>
-  );
+    {ownTopics.length > 0 && <div className="mt-4 flex flex-wrap gap-2"><span className="mt-1 text-xs text-muted-foreground">Seus temas:</span>{ownTopics.slice(0,8).map((item) => <button key={item} onClick={() => setTopic(item)} className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary">{item}</button>)}<Link href="/dashboard/topics" className="mt-1 text-xs text-muted-foreground underline">Gerenciar</Link></div>}
+    {suggestions.length > 0 && <div className="mt-3 flex flex-wrap gap-2"><span className="mt-1 text-xs text-muted-foreground">Ideias:</span>{suggestions.slice(0,6).map((item) => <button key={item} onClick={() => setTopic(item)} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{item}</button>)}</div>}
+    </Card>
+
+    <Card><label className="text-sm font-semibold">2. Visual do post</label><div className="mt-3 flex flex-wrap gap-2">{([["template","Usar template da galeria"],["stock","Foto gratuita (sem template)"],["ai","Imagem por IA (sem template)"],["mixed","Automático (sem template)"]] as [ImageSourcePref,string][]).map(([value,label]) => <button key={value} onClick={() => setImagePref(value)} className={`rounded-xl border px-3 py-2 text-sm ${imagePref === value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{label}</button>)}</div>
+      {imagePref === "template" && <div className="mt-4"><div className="flex flex-wrap gap-2">{niches.map((item) => <button key={item} onClick={() => setNiche(item)} className={`rounded-full px-3 py-1 text-xs ${niche === item ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground"}`}>{item}</button>)}</div><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{compatibleTemplates.map((template) => <button key={template.id} onClick={() => setTemplateId(template.id)} className={`overflow-hidden rounded-xl border text-left ${templateId === template.id ? "border-primary ring-2 ring-primary/20" : "border-border"}`}><div className="aspect-[2/1] p-4" style={{ backgroundColor: template.background_color, color: template.text_color }}><strong className="text-sm">{template.handle}</strong><p className={`mt-4 line-clamp-2 text-sm ${template.layout === "bold_statement" ? "font-bold" : ""}`}>Prévia do estilo desta arte.</p></div><div className="p-3"><strong className="text-sm">{template.name}</strong><p className="text-xs text-muted-foreground">{template.niche}</p></div></button>)}</div>{compatibleTemplates.length === 0 && <p className="mt-3 text-sm text-muted-foreground">Nenhum template disponível para este filtro. <Link href="/dashboard/templates" className="text-primary underline">Abra a galeria</Link> para criar um.</p>}</div>}
+    </Card>
+
+    {error && <div className="flex gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive"><WarningCircle size={18}/>{error}</div>}
+    {success && <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 p-3.5 text-sm text-success"><CheckCircle size={18}/>{success}{publishedUrl && <a href={publishedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold underline">Ver post <ArrowSquareOut size={13}/></a>}</div>}
+    {step === "generating" && <Card className="animate-pulse"><div className="grid gap-6 md:grid-cols-2"><div className="aspect-square rounded-xl bg-surface-2"/><div className="space-y-3"><div className="h-6 w-3/4 rounded bg-surface-2"/><div className="h-4 w-full rounded bg-surface-2"/><div className="h-4 w-5/6 rounded bg-surface-2"/></div></div></Card>}
+
+    {step === "ready" && content && image && <div className="grid gap-6 lg:grid-cols-[minmax(360px,.9fr)_minmax(0,1fr)]">
+      <div className="space-y-3"><h2 className="font-heading font-semibold">Prévia exata do post</h2><div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm"><div className="flex items-center gap-3 p-4">{selectedPage?.picture_url ? <Image src={selectedPage.picture_url} alt="" width={42} height={42} unoptimized className="h-11 w-11 rounded-full object-cover"/> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 font-bold">{selectedPage?.name?.[0] ?? "P"}</div>}<div><strong className="block text-sm">{selectedPage?.name ?? "Página selecionada"}</strong><span className="text-xs text-muted-foreground">Agora · Público</span></div></div><p className="whitespace-pre-line px-4 pb-4 text-sm leading-relaxed">{postMessage}</p><div className="relative aspect-square bg-surface-2"><Image src={image.url} alt={content.title} fill unoptimized className="object-cover"/></div></div><div className="flex items-center justify-between"><Badge>{image.source === "template" ? `${selectedTemplate?.name ?? "Template"} · sem IA de imagem` : image.source === "ai" ? "Imagem gerada por IA" : "Banco de imagens"}</Badge><button onClick={generate} className="flex items-center gap-1 text-xs text-muted-foreground"><ArrowClockwise size={13}/> Gerar novamente</button></div>{usage && <div className="rounded-xl border border-border bg-card p-3 text-sm"><div className="flex items-center justify-between"><strong>Custo desta geração</strong><span className="font-semibold text-primary">{usage.credits.toFixed(3)} créditos · US$ {usage.estimatedUsd.toFixed(4)}</span></div><p className="mt-1 text-xs text-muted-foreground">{image.source === "template" ? "A arte reutilizável custou 0 crédito; o valor acima é somente do texto." : "Texto e imagem rastreados nesta geração."}</p>{usage.items.map((item, index) => <p key={`${item.operation}-${index}`} className="mt-1 text-xs text-muted-foreground">{item.operation === "text" ? "Texto" : "Imagem"}: {item.model} · {item.credits} crédito(s)</p>)}</div>}</div>
+      <Card className="space-y-4"><p className="text-xs text-muted-foreground">Texto criado por <span className="font-medium capitalize">{content.provider}</span>{renderingTemplate ? " · atualizando a arte…" : ""}</p><Editor label="Chamada inicial" value={content.title} maxLength={120} onChange={(title) => setContent({ ...content, title })}/><TextEditor label="Descrição" value={content.description} rows={4} maxLength={500} onChange={(description) => setContent({ ...content, description })}/>{image.source === "template" && <TextEditor label="Texto dentro da arte (a prévia atualiza automaticamente)" value={content.artText ?? ""} rows={7} maxLength={700} onChange={(artText) => setContent({ ...content, artText })}/>}<div><label className="text-xs font-semibold text-muted-foreground">Hashtags</label><div className="mt-1 flex flex-wrap gap-1.5">{content.hashtags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">#{tag}<button onClick={() => removeHashtag(tag)}><X size={11}/></button></span>)}<input value={hashtagInput} onChange={(event) => setHashtagInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addHashtag())} placeholder="adicionar…" className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none"/></div></div><Editor label="Link de produto ou afiliado (opcional)" value={linkUrl} placeholder="https://..." onChange={setLinkUrl}/>{scheduleOpen && <Editor label="Agendar para" type="datetime-local" value={scheduledAt} onChange={setScheduledAt}/>}<div className="flex flex-wrap gap-2 pt-2"><Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}><FloppyDisk size={16}/> Salvar rascunho</Button>{scheduleOpen ? <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}><CalendarPlus size={16}/> Confirmar agendamento</Button> : <Button variant="secondary" onClick={() => setScheduleOpen(true)}><CalendarPlus size={16}/> Agendar</Button>}<Button onClick={() => save("post_now")} disabled={saving !== null}><Rocket size={16} weight="fill"/> {saving === "post_now" ? "Publicando…" : "Publicar agora"}</Button></div></Card>
+    </div>}
+  </div>;
 }
+
+function Editor({ label, value, placeholder, maxLength, type = "text", onChange }: { label: string; value: string; placeholder?: string; maxLength?: number; type?: string; onChange: (value: string) => void }) { return <div><label className="text-xs font-semibold text-muted-foreground">{label}</label><input type={type} value={value} placeholder={placeholder} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/></div>; }
+function TextEditor({ label, value, rows, maxLength, onChange }: { label: string; value: string; rows: number; maxLength: number; onChange: (value: string) => void }) { return <div><label className="text-xs font-semibold text-muted-foreground">{label}</label><textarea value={value} rows={rows} maxLength={maxLength} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full resize-y rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/></div>; }

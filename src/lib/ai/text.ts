@@ -135,7 +135,7 @@ function template(topic: string): GeneratedContent {
 
 type Attempt = { provider: ContentProvider; run: () => Promise<string> };
 
-function providerChain(topic: string, credentials: AiCredentials): Attempt[] {
+function providerChain(topic: string, credentials: AiCredentials, generationId?: string): Attempt[] {
   const chain: Attempt[] = [];
 
   // Kie is deliberately first when enabled: the economical model writes the
@@ -149,7 +149,7 @@ function providerChain(topic: string, credentials: AiCredentials): Attempt[] {
           kieChatCompletion(model, [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: `Tema: ${topic}` },
-          ]),
+          ], generationId),
       });
     }
   }
@@ -199,11 +199,11 @@ function providerChain(topic: string, credentials: AiCredentials): Attempt[] {
   return chain;
 }
 
-export async function generateContent(topic: string): Promise<GeneratedContent> {
+export async function generateContent(topic: string, generationId?: string): Promise<GeneratedContent> {
   const failures: string[] = [];
   const credentials = await getAiCredentials();
 
-  for (const { provider, run } of providerChain(topic, credentials)) {
+  for (const { provider, run } of providerChain(topic, credentials, generationId)) {
     try {
       return { ...parseContent(await run()), provider };
     } catch (err) {

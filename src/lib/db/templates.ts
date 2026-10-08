@@ -20,7 +20,9 @@ export async function getTemplate(id: string): Promise<ContentTemplate | null> {
   return data as ContentTemplate | null;
 }
 
-export async function createTemplate(input: Pick<ContentTemplate, "name" | "handle">) {
+export async function createTemplate(
+  input: Pick<ContentTemplate, "name" | "handle" | "layout" | "niche" | "page_id" | "identity_source">
+) {
   const { data, error } = await supabaseAdmin()
     .from("content_templates")
     .insert(input)

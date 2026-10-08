@@ -45,6 +45,8 @@ export interface FacebookPage {
   id: string;
   name: string;
   category: string | null;
+  username: string | null;
+  picture_url: string | null;
   /** Non-expiring when minted from a long-lived user token. */
   access_token: string;
 }
@@ -86,7 +88,7 @@ export async function fetchPage(reference: string): Promise<FacebookPage> {
   const ref = pageReference(reference);
   const data = await graph(`/${encodeURIComponent(ref)}`, {
     access_token: settings.facebook_user_token,
-    fields: "id,name,category,access_token",
+    fields: "id,name,category,username,picture.type(large){url},access_token",
   });
   if (!data.id || !data.name || !data.access_token) {
     throw new Error("A conta conectada não tem permissão para publicar nessa Página.");
@@ -95,6 +97,8 @@ export async function fetchPage(reference: string): Promise<FacebookPage> {
     id: data.id,
     name: data.name,
     category: data.category ?? null,
+    username: data.username ?? null,
+    picture_url: data.picture?.data?.url ?? null,
     access_token: data.access_token,
   };
 }
@@ -114,7 +118,7 @@ export async function fetchPages(): Promise<FacebookPage[]> {
   do {
     const params: Record<string, string> = {
       access_token: settings.facebook_user_token,
-      fields: "id,name,category,access_token,tasks",
+      fields: "id,name,category,username,picture.type(large){url},access_token,tasks",
       limit: "100",
     };
     if (after) params.after = after;
@@ -126,6 +130,8 @@ export async function fetchPages(): Promise<FacebookPage[]> {
         id: p.id,
         name: p.name,
         category: p.category ?? null,
+        username: p.username ?? null,
+        picture_url: p.picture?.data?.url ?? null,
         access_token: p.access_token,
       });
     }

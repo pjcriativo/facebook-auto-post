@@ -9,6 +9,7 @@ import type { AiGenerationJob } from "@/lib/types";
 const KIE_BASE = "https://api.kie.ai";
 const CHAT_MODEL_ID = /^[a-zA-Z0-9._-]+$/;
 const TASK_MODEL_ID = /^[a-zA-Z0-9._-]+(?:\/[a-zA-Z0-9._-]+)*$/;
+type ChatMessage = { role: string; content: string };
 
 function checkedChatModel(model: string): string {
   if (!CHAT_MODEL_ID.test(model)) throw new Error("O identificador do modelo de texto Kie.ai é inválido.");
@@ -28,7 +29,7 @@ async function kieRequest(path: string, apiKey: string, init?: RequestInit) {
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(55_000),
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || (typeof body?.code === "number" && body.code !== 200)) {
@@ -37,7 +38,86 @@ async function kieRequest(path: string, apiKey: string, init?: RequestInit) {
   return body;
 }
 
-export async function kieChatCompletion(model: string, messages: Array<{ role: string; content: string }>) {
+function extractText(data: Record<string, unknown>): string | null {
+  const choices = data.choices as Array<{ message?: { content?: unknown } }> | undefined;
+  const chatText = choices?.[0]?.message?.content;
+  if (typeof chatText === "string" && chatText.trim()) return chatText;
+
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text;
+
+  const claudeContent = data.content as Array<{ type?: string; text?: unknown }> | undefined;
+  const claudeText = claudeContent
+    ?.filter((item) => item.type === "text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+  if (claudeText?.trim()) return claudeText;
+
+  const output = data.output as Array<{ content?: Array<{ type?: string; text?: unknown }> }> | undefined;
+  const responseText = output
+    ?.flatMap((item) => item.content ?? [])
+    .filter((item) => item.type === "output_text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("\n");
+  return responseText?.trim() ? responseText : null;
+}
+
+async function runTextModel(model: string, messages: ChatMessage[], apiKey: string) {
+  if (model.startsWith("claude-")) {
+    const system = messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+    const conversation = messages
+      .filter((message) => message.role !== "system")
+      .map((message) => ({
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+      }));
+    return kieRequest("/claude/v1/messages", apiKey, {
+      method: "POST",
+      body: JSON.stringify({
+        model,
+        ...(system ? { system } : {}),
+        messages: conversation,
+        thinkingFlag: false,
+        max_tokens: 1_200,
+        stream: false,
+      }),
+    });
+  }
+
+  const usesResponses =
+    model.startsWith("deepseek-") ||
+    model.startsWith("grok-") ||
+    model.startsWith("gpt-5-6-") ||
+    model.startsWith("gpt-6-") ||
+    model.startsWith("gpt-6.") ||
+    ["gpt-5.4", "gpt-5.5", "gpt-5-4", "gpt-5-5"].includes(model);
+
+  if (usesResponses) {
+    const endpoint = model.startsWith("deepseek-")
+      ? "/openai/v1/responses"
+      : model.startsWith("grok-")
+        ? "/xai/v1/responses"
+        : "/codex/v1/responses";
+    const input = messages
+      .map((message) => `${message.role === "system" ? "INSTRUÇÕES" : "PEDIDO"}:\n${message.content}`)
+      .join("\n\n");
+    return kieRequest(endpoint, apiKey, {
+      method: "POST",
+      body: JSON.stringify({
+        model,
+        input: [{ role: "user", content: [{ type: "input_text", text: input }] }],
+        reasoning: { effort: "low" },
+        stream: false,
+      }),
+    });
+  }
+
+  return kieRequest(`/${model}/v1/chat/completions`, apiKey, {
+    method: "POST",
+    body: JSON.stringify({ model, messages, temperature: 0.75, stream: false }),
+  });
+}
+
+export async function kieChatCompletion(model: string, messages: ChatMessage[]) {
   const credentials = await getAiCredentials();
   if (!credentials.kieApiKey || !credentials.kieEnabled) {
     throw new Error("A geração de texto pela Kie.ai não está ativada.");
@@ -54,17 +134,9 @@ export async function kieChatCompletion(model: string, messages: Array<{ role: s
   const selected = checkedChatModel(model);
   const started = Date.now();
   try {
-    const data = await kieRequest(`/${selected}/v1/chat/completions`, credentials.kieApiKey, {
-      method: "POST",
-      body: JSON.stringify({
-        model: selected,
-        messages,
-        temperature: 0.75,
-        stream: false,
-      }),
-    });
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || !content.trim()) {
+    const data = await runTextModel(selected, messages, credentials.kieApiKey);
+    const content = extractText(data);
+    if (!content) {
       throw new Error("A Kie.ai retornou uma resposta vazia.");
     }
     await recordAiUsage({

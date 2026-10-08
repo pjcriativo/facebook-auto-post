@@ -2,8 +2,8 @@ import { getSettings } from "@/lib/db/settings";
 import { env } from "@/lib/env";
 
 export const DEFAULT_AI_MODELS = {
-  kieText: "gemini-3-5-flash-openai",
-  kieTextFallback: "gpt-5-2",
+  kieText: "deepseek-v4-1-flash",
+  kieTextFallback: "claude-sonnet-5",
   kieImage: "gpt-image-2-text-to-image",
   kieImageFallback: "nano-banana-2",
   groq: "llama-3.3-70b-versatile",

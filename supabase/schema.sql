@@ -29,8 +29,8 @@ create table if not exists app_settings (
   kie_api_key text,
   kie_enabled boolean not null default false,
   kie_image_enabled boolean not null default false,
-  kie_text_model text not null default 'gemini-3-5-flash-openai',
-  kie_text_fallback_model text not null default 'gpt-5-2',
+  kie_text_model text not null default 'deepseek-v4-1-flash',
+  kie_text_fallback_model text not null default 'claude-sonnet-5',
   kie_image_model text not null default 'gpt-image-2-text-to-image',
   kie_image_fallback_model text not null default 'nano-banana-2',
   kie_daily_credit_limit numeric default 100,
@@ -211,8 +211,8 @@ alter table app_settings add column if not exists pexels_api_key text;
 alter table app_settings add column if not exists kie_api_key text;
 alter table app_settings add column if not exists kie_enabled boolean not null default false;
 alter table app_settings add column if not exists kie_image_enabled boolean not null default false;
-alter table app_settings add column if not exists kie_text_model text not null default 'gemini-3-5-flash-openai';
-alter table app_settings add column if not exists kie_text_fallback_model text not null default 'gpt-5-2';
+alter table app_settings add column if not exists kie_text_model text not null default 'deepseek-v4-1-flash';
+alter table app_settings add column if not exists kie_text_fallback_model text not null default 'claude-sonnet-5';
 alter table app_settings add column if not exists kie_image_model text not null default 'gpt-image-2-text-to-image';
 alter table app_settings add column if not exists kie_image_fallback_model text not null default 'nano-banana-2';
 alter table app_settings add column if not exists kie_daily_credit_limit numeric default 100;

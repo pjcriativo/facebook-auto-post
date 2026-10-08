@@ -18,71 +18,150 @@ type Source = "panel" | "environment" | "none";
 
 type ModelOption = {
   value: string;
+  group: string;
   label: string;
   description: string;
 };
 
 const KIE_TEXT_MODELS: ModelOption[] = [
   {
-    value: "gemini-3-5-flash-openai",
-    label: "Gemini 3.5 Flash — econômico (recomendado)",
-    description: "Melhor escolha para grande volume de posts e baixo consumo.",
+    value: "deepseek-v4-1-flash",
+    group: "DeepSeek",
+    label: "DeepSeek V4.1 Flash — econômico (recomendado)",
+    description: "Ótimo custo-benefício para produzir textos em grande volume.",
   },
   {
-    value: "gemini-3-6-flash-openai",
-    label: "Gemini 3.6 Flash — rápido",
-    description: "Opção Flash intermediária para respostas rápidas.",
+    value: "gpt-5-6-luna",
+    group: "OpenAI",
+    label: "GPT-5.6 Luna — rápido e econômico",
+    description: "Opção OpenAI voltada a alto volume e baixa latência.",
   },
   {
-    value: "gemini-3-8-flash-openai",
-    label: "Gemini 3.8 Flash — qualidade e velocidade",
-    description: "Opção Flash mais avançada para textos que precisam de mais qualidade.",
+    value: "gpt-6-luna",
+    group: "OpenAI",
+    label: "GPT-6 Luna — nova geração econômica",
+    description: "Modelo OpenAI atual para velocidade e grande volume.",
   },
   {
-    value: "gemini-2.5-pro",
-    label: "Gemini 2.5 Pro — qualidade",
-    description: "Mais capacidade para conteúdos complexos, com custo maior que Flash.",
+    value: "gpt-5-6-terra",
+    group: "OpenAI",
+    label: "GPT-5.6 Terra — equilibrado",
+    description: "Equilibra qualidade, velocidade e custo para uso diário.",
   },
   {
-    value: "gemini-3.1-pro",
-    label: "Gemini 3.1 Pro — raciocínio avançado",
-    description: "Para tarefas difíceis; não é a melhor opção para alto volume.",
+    value: "gpt-5-6-sol",
+    group: "OpenAI",
+    label: "GPT-5.6 Sol — alta qualidade",
+    description: "Mais capacidade de raciocínio, com custo superior ao Luna e Terra.",
+  },
+  {
+    value: "gpt-6-astra",
+    group: "OpenAI",
+    label: "GPT-6 Astra — qualidade máxima",
+    description: "Modelo OpenAI de ponta para conteúdos especiais; evite em alto volume.",
+  },
+  {
+    value: "gpt-6.1-sol",
+    group: "OpenAI",
+    label: "GPT-6.1 Sol — raciocínio de ponta",
+    description: "Modelo avançado disponível na sua conta para trabalhos especiais.",
   },
   {
     value: "gpt-5-2",
-    label: "GPT-5.2 — reserva de alta qualidade",
-    description: "Boa escolha como fallback quando o modelo econômico falhar.",
+    group: "OpenAI",
+    label: "GPT-5.2 — compatível e confiável",
+    description: "Modelo de chat estável para uso como reserva.",
+  },
+  {
+    value: "claude-haiku-4-5",
+    group: "Anthropic Claude",
+    label: "Claude Haiku 4.5 — rápido",
+    description: "Claude mais leve para tarefas rápidas e econômicas.",
+  },
+  {
+    value: "claude-sonnet-5",
+    group: "Anthropic Claude",
+    label: "Claude Sonnet 5 — melhor escrita (recomendado como reserva)",
+    description: "Excelente para textos naturais, persuasivos e bem estruturados.",
+  },
+  {
+    value: "claude-sonnet-5-5",
+    group: "Anthropic Claude",
+    label: "Claude Sonnet 5.5 — escrita premium",
+    description: "Versão avançada do Sonnet para conteúdos importantes.",
+  },
+  {
+    value: "claude-opus-5-5",
+    group: "Anthropic Claude",
+    label: "Claude Opus 5.5 — qualidade máxima",
+    description: "Alta qualidade e raciocínio, mas não indicado para geração em massa.",
+  },
+  {
+    value: "claude-fable-5",
+    group: "Anthropic Claude",
+    label: "Claude Fable 5 — criatividade",
+    description: "Voltado a escrita criativa e conteúdo elaborado.",
+  },
+  {
+    value: "grok-4-5",
+    group: "xAI Grok",
+    label: "Grok 4.5 — equilibrado",
+    description: "Boa capacidade de raciocínio e produção de conteúdo.",
+  },
+  {
+    value: "grok-4-7",
+    group: "xAI Grok",
+    label: "Grok 4.7 — mais recente",
+    description: "Modelo Grok mais novo disponível no catálogo da sua conta.",
+  },
+  {
+    value: "gemini-3-8-flash-openai",
+    group: "Google Gemini",
+    label: "Gemini 3.8 Flash — econômico",
+    description: "Alternativa Google rápida para alto volume.",
+  },
+  {
+    value: "gemini-3-5-flash-openai",
+    group: "Google Gemini",
+    label: "Gemini 3.5 Flash — legado",
+    description: "Mantido para compatibilidade com a configuração anterior.",
   },
 ];
 
 const KIE_IMAGE_MODELS: ModelOption[] = [
   {
     value: "gpt-image-2-text-to-image",
+    group: "OpenAI",
     label: "GPT Image 2 — qualidade (recomendado)",
     description: "Boa composição e reprodução de textos em imagens.",
   },
   {
     value: "nano-banana-2",
+    group: "Google",
     label: "Nano Banana 2 — econômico",
     description: "Alternativa econômica para imagens ocasionais.",
   },
   {
     value: "nano-banana-2-1",
+    group: "Google",
     label: "Nano Banana 2.1 — atualizado",
     description: "Versão mais recente do Nano Banana para geração de imagens.",
   },
   {
     value: "flux-2/flex-text-to-image",
+    group: "Flux",
     label: "Flux 2 Flex — equilibrado",
     description: "Equilíbrio entre qualidade, flexibilidade e consumo.",
   },
   {
     value: "flux-2/pro-text-to-image",
+    group: "Flux",
     label: "Flux 2 Pro — alta qualidade",
     description: "Modelo fotorealista para imagens em que a qualidade é prioridade.",
   },
   {
     value: "gpt-image-2-5-flare-text-to-image",
+    group: "OpenAI",
     label: "GPT Image 2.5 Flare — avançado",
     description: "Opção avançada para peças especiais, com consumo potencialmente maior.",
   },
@@ -560,6 +639,7 @@ function ModelSelectField({
 }) {
   const selected = options.find((option) => option.value === value);
   const knownValue = Boolean(selected);
+  const groups = [...new Set(options.map((option) => option.group))];
 
   return (
     <div className="mt-3">
@@ -572,8 +652,12 @@ function ModelSelectField({
         className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {!knownValue && value && <option value={value}>{value} — configuração salva</option>}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
+        {groups.map((group) => (
+          <optgroup key={group} label={group}>
+            {options.filter((option) => option.group === group).map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </optgroup>
         ))}
       </select>
       <p className="mt-1 text-xs text-muted-foreground">

@@ -1,5 +1,6 @@
 export type ImageSource = "ai" | "stock" | "template";
 export type ImageSourcePref = "ai" | "stock" | "mixed" | "template";
+export type ImageOverlayStyle = "gradient" | "card" | "center";
 export type PostStatus = "draft" | "scheduled" | "posted" | "failed";
 
 /**
@@ -85,6 +86,11 @@ export interface Post {
   hashtags: string[];
   image_url: string;
   image_source: ImageSource;
+  /** Original photograph before our deterministic hook/identity overlay. */
+  base_image_url?: string | null;
+  image_hook?: string | null;
+  image_prompt?: string | null;
+  overlay_style?: ImageOverlayStyle | null;
   link_url: string | null;
   page_id: string | null;
   page_name: string | null;
@@ -134,6 +140,12 @@ export interface GeneratedContent {
   hashtags: string[];
   /** Short, line-break-friendly copy rendered inside a reusable visual template. */
   artText?: string;
+  /** Short headline composed over AI/stock photography by our own renderer. */
+  imageHook?: string;
+  /** Visual direction for image models, written in English for consistency. */
+  imagePrompt?: string;
+  /** Concise English query used by stock-photo search. */
+  stockQuery?: string;
   provider?: ContentProvider;
   /** First provider failure, surfaced so a degraded draft can explain itself. */
   providerError?: string;

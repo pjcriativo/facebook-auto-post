@@ -5,6 +5,7 @@ import { generateContent } from "@/lib/ai/text";
 import { generateImage } from "@/lib/ai/image";
 import { listTemplates } from "@/lib/db/templates";
 import { renderTemplate } from "@/lib/templates/render";
+import { renderPhotoOverlay } from "@/lib/images/overlay";
 import { getTrendingTopics } from "@/lib/trends";
 import { markTopicUsed, nextTopic, TopicsTableMissingError } from "@/lib/db/topics";
 import { decideTopicOrigin } from "@/lib/topic-origin";
@@ -109,6 +110,7 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   const generationId = randomUUID();
   const content = await generateContent(topic, generationId);
   let image;
+  let baseImageUrl: string | null = null;
   if (settings.image_source === "template") {
     const compatible = (await listTemplates()).filter(
       (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
@@ -120,7 +122,17 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
       content.artText || `${content.title}\n\n${content.description}`
     );
   } else {
-    image = await generateImage(`${content.title} — ${topic}`, settings.image_source);
+    const visualPrompt = settings.image_source === "stock"
+      ? content.stockQuery || content.imagePrompt || topic
+      : content.imagePrompt || `${content.title} — ${topic}`;
+    const baseImage = await generateImage(visualPrompt, settings.image_source);
+    baseImageUrl = baseImage.url;
+    image = await renderPhotoOverlay({
+      imageUrl: baseImage.url,
+      hook: content.imageHook || content.title,
+      style: "gradient",
+      pageId: settings.default_page_id,
+    }, baseImage.source);
   }
 
   const draft = await createPostRecord({
@@ -130,6 +142,10 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     hashtags: content.hashtags,
     image_url: image.url,
     image_source: image.source,
+    base_image_url: baseImageUrl,
+    image_hook: settings.image_source === "template" ? null : content.imageHook || content.title,
+    image_prompt: settings.image_source === "template" ? null : content.imagePrompt || topic,
+    overlay_style: settings.image_source === "template" ? null : "gradient",
     link_url: null,
     page_id: settings.default_page_id,
     page_name: settings.default_page_name,

@@ -43,6 +43,7 @@ import {
   updateTemplate,
 } from "@/lib/db/templates";
 import { renderTemplate, renderTemplatePng } from "@/lib/templates/render";
+import { renderPhotoOverlay, renderPhotoOverlayPng } from "@/lib/images/overlay";
 import { generationUsage, usageDashboard } from "@/lib/ai/usage";
 import {
   addTopics,
@@ -404,9 +405,17 @@ const ContentBody = z.object({
 });
 
 const ImageBody = z.object({
-  prompt: z.string().trim().min(2).max(300),
+  prompt: z.string().trim().min(2).max(700),
   source: z.enum(["ai", "stock", "mixed"]),
   generationId: z.string().uuid().optional(),
+});
+
+const PhotoOverlayBody = z.object({
+  imageUrl: z.string().url(),
+  hook: z.string().trim().min(2).max(90),
+  style: z.enum(["gradient", "card", "center"]),
+  pageId: z.string().min(1).nullable().optional(),
+  source: z.enum(["ai", "stock"]),
 });
 
 const CreatePostBody = z.object({
@@ -416,6 +425,10 @@ const CreatePostBody = z.object({
   hashtags: z.array(z.string()).max(15).default([]),
   imageUrl: z.string().url(),
   imageSource: z.enum(["ai", "stock", "template"]),
+  baseImageUrl: z.string().url().optional(),
+  imageHook: z.string().trim().max(90).optional(),
+  imagePrompt: z.string().trim().max(700).optional(),
+  overlayStyle: z.enum(["gradient", "card", "center"]).optional(),
   linkUrl: z.string().url().optional().or(z.literal("")),
   pageId: z.string().min(1).nullable(),
   pageName: z.string().min(1).nullable(),
@@ -664,8 +677,15 @@ export async function POST(req: Request, ctx: Ctx) {
       const parsed = ImageBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe uma descrição e a fonte da imagem." }, 400);
       try {
-        const resolved = resolveImageSource(parsed.data.source);
         const credentials = await getAiCredentials();
+        let resolved = resolveImageSource(parsed.data.source);
+        if (resolved === "stock" && !credentials.pexelsApiKey) {
+          if (parsed.data.source === "mixed") {
+            resolved = "ai";
+          } else {
+            return json({ error: "Configure a chave do Pexels na aba APIs para usar fotos gratuitas." }, 409);
+          }
+        }
         if (
           resolved === "ai" &&
           credentials.kieApiKey &&
@@ -682,6 +702,22 @@ export async function POST(req: Request, ctx: Ctx) {
         return json(await generateImage(parsed.data.prompt, resolved));
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : "Não foi possível gerar a imagem." }, 502);
+      }
+    }
+
+    if (route === "images/overlay/preview" || route === "images/overlay/render") {
+      const parsed = PhotoOverlayBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Informe a imagem, o gancho e o estilo visual." }, 400);
+      try {
+        if (route.endsWith("/preview")) {
+          const png = await renderPhotoOverlayPng(parsed.data);
+          return new Response(new Uint8Array(png), {
+            headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+          });
+        }
+        return json(await renderPhotoOverlay(parsed.data, parsed.data.source));
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Não foi possível aplicar o gancho." }, 502);
       }
     }
 
@@ -702,6 +738,10 @@ export async function POST(req: Request, ctx: Ctx) {
         hashtags: b.hashtags,
         image_url: b.imageUrl,
         image_source: b.imageSource,
+        base_image_url: b.baseImageUrl ?? null,
+        image_hook: b.imageHook ?? null,
+        image_prompt: b.imagePrompt ?? null,
+        overlay_style: b.overlayStyle ?? null,
         link_url: b.linkUrl || null,
         page_id: b.pageId,
         page_name: b.pageName,

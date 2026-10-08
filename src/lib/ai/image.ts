@@ -57,7 +57,9 @@ async function fetchStockImageBytes(query: string, apiKey: string): Promise<Blob
   const photos: Array<{ src: { large2x: string; large: string } }> = data.photos ?? [];
   if (photos.length === 0) throw new Error("Nenhuma foto de banco de imagens foi encontrada para este tema");
 
-  const chosen = photos[Math.floor(Math.random() * photos.length)];
+  // Pexels orders search results by relevance. Using the best-ranked result is
+  // safer for unattended posting than choosing an arbitrary photo from page 1.
+  const chosen = photos[0];
   const imageRes = await fetch(chosen.src.large2x ?? chosen.src.large, {
     signal: AbortSignal.timeout(20_000),
   });
@@ -76,9 +78,10 @@ async function fetchStockImageBytes(query: string, apiKey: string): Promise<Blob
 export async function generateImage(
   prompt: string,
   pref: ImageSourcePref
-): Promise<{ url: string; source: ImageSource }> {
-  const source = resolveImageSource(pref);
+): Promise<{ url: string; source: Exclude<ImageSource, "template"> }> {
   const credentials = await getAiCredentials();
+  let source = resolveImageSource(pref);
+  if (pref === "mixed" && source === "stock" && !credentials.pexelsApiKey) source = "ai";
 
   let blob: Blob;
   try {
@@ -113,8 +116,8 @@ export async function generateImage(
 
 export async function uploadImageBlob(
   blob: Blob,
-  source: ImageSource
-): Promise<{ url: string; source: ImageSource }> {
+  source: Exclude<ImageSource, "template">
+): Promise<{ url: string; source: Exclude<ImageSource, "template"> }> {
   const db = supabaseAdmin();
   const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
   const bytes = new Uint8Array(await blob.arrayBuffer());

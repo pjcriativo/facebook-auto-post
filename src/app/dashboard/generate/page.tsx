@@ -8,25 +8,29 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { composeMessage, facebookPostUrl } from "@/lib/types";
-import type { ContentTemplate, GeneratedContent, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
+import type { ContentTemplate, GeneratedContent, ImageOverlayStyle, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 type Usage = { credits: number; estimatedUsd: number; items: Array<{ provider: string; operation: string; model: string; credits: number }> };
+type VisualImage = { url: string; source: ImageSource; baseUrl?: string };
 
 export default function GeneratePage() {
   const [topic, setTopic] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [ownTopics, setOwnTopics] = useState<string[]>([]);
   const [imagePref, setImagePref] = useState<ImageSourcePref>("template");
+  const [pexelsReady, setPexelsReady] = useState(true);
   const [templates, setTemplates] = useState<ContentTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [niche, setNiche] = useState("Todos");
   const [renderingTemplate, setRenderingTemplate] = useState(false);
+  const [overlayStyle, setOverlayStyle] = useState<ImageOverlayStyle>("gradient");
   const previewBlob = useRef<string | null>(null);
+  const overlayPreviewRequest = useRef(0);
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
   const [content, setContent] = useState<GeneratedContent | null>(null);
-  const [image, setImage] = useState<{ url: string; source: ImageSource } | null>(null);
+  const [image, setImage] = useState<VisualImage | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [hashtagInput, setHashtagInput] = useState("");
@@ -46,6 +50,7 @@ export default function GeneratePage() {
       fetch("/api/topics").then((r) => r.json()).then((d) => setOwnTopics((d.topics ?? []).filter((t: { enabled: boolean }) => t.enabled).map((t: { text: string }) => t.text))),
       fetch("/api/trends").then((r) => r.json()).then((d) => setSuggestions(d.topics ?? [])),
       fetch("/api/settings").then((r) => r.json()).then((d) => setImagePref(d.image_source ?? "template")),
+      fetch("/api/integrations").then((r) => r.json()).then((d) => setPexelsReady(Boolean(d.providers?.pexels?.configured))),
       fetch("/api/facebook/pages").then((r) => r.json()).then((d) => { setPages(d.pages ?? []); if (d.defaultPageId) setPageId(d.defaultPageId); }),
       fetch("/api/templates").then((r) => r.json()).then((d) => { const enabled = (d.templates ?? []).filter((item: ContentTemplate) => item.enabled); setTemplates(enabled); setTemplateId(enabled[0]?.id ?? ""); }),
     ]).catch(() => {});
@@ -58,10 +63,10 @@ export default function GeneratePage() {
   const selectedTemplate = templates.find((item) => item.id === templateId);
   const postMessage = content ? composeMessage({ title: content.title, description: content.description, hashtags: content.hashtags, link_url: linkUrl || null }) : "";
 
-  function setPreviewImage(url: string) {
+  function setPreviewImage(url: string, source: ImageSource = "template", baseUrl?: string) {
     if (previewBlob.current) URL.revokeObjectURL(previewBlob.current);
     previewBlob.current = url;
-    setImage({ url, source: "template" });
+    setImage({ url, source, baseUrl });
   }
 
   async function waitForImage(jobId: string) {
@@ -85,6 +90,24 @@ export default function GeneratePage() {
     } finally { setRenderingTemplate(false); }
   }
 
+  async function renderOverlayPreview(baseImage: { url: string; source: Exclude<ImageSource, "template"> }, hook: string) {
+    const request = ++overlayPreviewRequest.current;
+    setRenderingTemplate(true);
+    try {
+      const response = await fetch("/api/images/overlay/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: baseImage.url, hook, style: overlayStyle, pageId: pageId || null, source: baseImage.source }),
+      });
+      if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Não foi possível aplicar o gancho."); }
+      const url = URL.createObjectURL(await response.blob());
+      if (request !== overlayPreviewRequest.current) return URL.revokeObjectURL(url);
+      setPreviewImage(url, baseImage.source, baseImage.url);
+    } finally {
+      if (request === overlayPreviewRequest.current) setRenderingTemplate(false);
+    }
+  }
+
   useEffect(() => {
     if (step !== "ready" || imagePref !== "template" || !content?.artText || !templateId) return;
     const timer = window.setTimeout(() => void renderPreview(content.artText!).catch((err) => setError(err instanceof Error ? err.message : "Falha na prévia.")), 500);
@@ -92,6 +115,15 @@ export default function GeneratePage() {
     // Render only when the artwork inputs change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content?.artText, templateId]);
+
+  useEffect(() => {
+    if (step !== "ready" || imagePref === "template" || !content?.imageHook || !image?.baseUrl || image.source === "template") return;
+    const baseImage = { url: image.baseUrl, source: image.source };
+    const timer = window.setTimeout(() => void renderOverlayPreview(baseImage, content.imageHook!).catch((err) => setError(err instanceof Error ? err.message : "Falha na prévia.")), 500);
+    return () => window.clearTimeout(timer);
+    // Regenerate only when the deterministic artwork inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content?.imageHook, overlayStyle, pageId]);
 
   async function loadUsage(id: string) {
     const response = await fetch(`/api/usage/generation/${id}`);
@@ -101,23 +133,31 @@ export default function GeneratePage() {
   async function generate() {
     if (topic.trim().length < 2) return setError("Informe primeiro um tema com pelo menos algumas palavras.");
     if (imagePref === "template" && !templateId) return setError("Escolha um template da galeria ou selecione a opção sem template.");
+    if (imagePref === "stock" && !pexelsReady) return setError("Configure a chave do Pexels na aba APIs antes de usar fotos gratuitas.");
     const id = crypto.randomUUID();
     setGenerationId(id); setUsage(null); setError(null); setSuccess(null); setPublishedUrl(null); setStep("generating"); setContent(null); setImage(null);
     try {
-      const contentRequest = fetch("/api/generate/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, generationId: id }) });
-      const imageRequest = imagePref === "template" ? null : fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: topic, source: imagePref, generationId: id }) });
-      const contentRes = await contentRequest;
+      const contentRes = await fetch("/api/generate/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, generationId: id }) });
       if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Não foi possível gerar o conteúdo.");
       const contentData: GeneratedContent = await contentRes.json();
-      let imageData: { url: string; source: ImageSource };
+      let imageData: VisualImage;
       if (imagePref === "template") {
         const response = await fetch("/api/templates/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, text: contentData.artText || `${contentData.title}\n\n${contentData.description}` }) });
         if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Não foi possível montar o template."); }
         const url = URL.createObjectURL(await response.blob()); previewBlob.current = url; imageData = { url, source: "template" };
       } else {
-        const imageRes = await imageRequest!;
+        const visualPrompt = imagePref === "stock"
+          ? contentData.stockQuery || contentData.imagePrompt || topic
+          : contentData.imagePrompt || topic;
+        const imageRes = await fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: visualPrompt, source: imagePref, generationId: id }) });
         if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
-        const data = await imageRes.json(); imageData = imageRes.status === 202 ? await waitForImage(data.jobId) : data;
+        const data = await imageRes.json();
+        const rawImage = (imageRes.status === 202 ? await waitForImage(data.jobId) : data) as { url: string; source: Exclude<ImageSource, "template"> };
+        const hook = contentData.imageHook || contentData.title;
+        const overlayRes = await fetch("/api/images/overlay/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageUrl: rawImage.url, hook, style: overlayStyle, pageId: pageId || null, source: rawImage.source }) });
+        if (!overlayRes.ok) throw new Error((await overlayRes.json()).error ?? "Não foi possível aplicar o gancho.");
+        const url = URL.createObjectURL(await overlayRes.blob()); previewBlob.current = url;
+        imageData = { url, source: rawImage.source, baseUrl: rawImage.url };
       }
       setContent(contentData); setImage(imageData); setStep("ready"); await loadUsage(id);
     } catch (err) { setError(err instanceof Error ? err.message : "Algo deu errado."); setStep("idle"); }
@@ -136,8 +176,11 @@ export default function GeneratePage() {
       if (image.source === "template") {
         const response = await fetch("/api/templates/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ templateId, text: content.artText || `${content.title}\n\n${content.description}` }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar a arte final."); finalImage = body;
+      } else if (image.baseUrl) {
+        const response = await fetch("/api/images/overlay/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageUrl: image.baseUrl, hook: content.imageHook || content.title, style: overlayStyle, pageId: pageId || null, source: image.source }) });
+        const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar a arte com o gancho."); finalImage = body;
       }
-      const response = await fetch("/api/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, title: content.title, description: content.description, hashtags: content.hashtags, imageUrl: finalImage.url, imageSource: finalImage.source, linkUrl: linkUrl || undefined, pageId: pageId || null, pageName: selectedPage?.name ?? null, generationId, action, scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined }) });
+      const response = await fetch("/api/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, title: content.title, description: content.description, hashtags: content.hashtags, imageUrl: finalImage.url, imageSource: finalImage.source, baseImageUrl: image.baseUrl, imageHook: image.source === "template" ? undefined : content.imageHook || content.title, imagePrompt: image.source === "template" ? undefined : content.imagePrompt || topic, overlayStyle: image.source === "template" ? undefined : overlayStyle, linkUrl: linkUrl || undefined, pageId: pageId || null, pageName: selectedPage?.name ?? null, generationId, action, scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Não foi possível salvar o post.");
       if (action === "post_now" && data.post.status === "failed") throw new Error(data.post.error_message ?? "O Facebook rejeitou este post.");
       setSuccess(action === "draft" ? "Salvo como rascunho." : action === "schedule" ? "Post agendado." : "Publicado no Facebook 🎉");
@@ -157,7 +200,9 @@ export default function GeneratePage() {
     {suggestions.length > 0 && <div className="mt-3 flex flex-wrap gap-2"><span className="mt-1 text-xs text-muted-foreground">Ideias:</span>{suggestions.slice(0,6).map((item) => <button key={item} onClick={() => setTopic(item)} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{item}</button>)}</div>}
     </Card>
 
-    <Card><label className="text-sm font-semibold">2. Visual do post</label><div className="mt-3 flex flex-wrap gap-2">{([["template","Usar template da galeria"],["stock","Foto gratuita (sem template)"],["ai","Imagem por IA (sem template)"],["mixed","Automático (sem template)"]] as [ImageSourcePref,string][]).map(([value,label]) => <button key={value} onClick={() => setImagePref(value)} className={`rounded-xl border px-3 py-2 text-sm ${imagePref === value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{label}</button>)}</div>
+    <Card><label className="text-sm font-semibold">2. Visual do post</label><div className="mt-3 flex flex-wrap gap-2">{([["template","Usar template da galeria"],["stock","Foto gratuita + gancho"],["ai","Imagem por IA + gancho"],["mixed","Automático + gancho"]] as [ImageSourcePref,string][]).map(([value,label]) => { const disabled = value === "stock" && !pexelsReady; return <button key={value} disabled={disabled} title={disabled ? "Configure o Pexels na aba APIs" : undefined} onClick={() => setImagePref(value)} className={`rounded-xl border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45 ${imagePref === value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{label}</button>; })}</div>
+      {!pexelsReady && <p className="mt-2 text-xs text-muted-foreground">Fotos gratuitas estão desativadas porque o Pexels ainda não possui uma chave. <Link href="/dashboard/apis" className="text-primary underline">Configurar em APIs</Link>.</p>}
+      {imagePref !== "template" && <div className="mt-4 rounded-xl border border-border bg-background p-3"><p className="text-xs font-semibold text-muted-foreground">Estilo do gancho sobre a fotografia</p><div className="mt-2 flex flex-wrap gap-2">{([["gradient","Degradê inferior"],["card","Faixa destacada"],["center","Texto central"]] as [ImageOverlayStyle,string][]).map(([value,label]) => <button key={value} onClick={() => setOverlayStyle(value)} className={`rounded-lg border px-3 py-1.5 text-xs ${overlayStyle === value ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}>{label}</button>)}</div><p className="mt-2 text-xs text-muted-foreground">A IA cria o fundo sem letras; o app aplica o texto corretamente e mostra o arquivo exato que será publicado.</p></div>}
       {imagePref === "template" && <div className="mt-4"><div className="flex flex-wrap gap-2">{niches.map((item) => <button key={item} onClick={() => setNiche(item)} className={`rounded-full px-3 py-1 text-xs ${niche === item ? "bg-primary text-primary-foreground" : "bg-surface-2 text-muted-foreground"}`}>{item}</button>)}</div><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{compatibleTemplates.map((template) => <button key={template.id} onClick={() => setTemplateId(template.id)} className={`overflow-hidden rounded-xl border text-left ${templateId === template.id ? "border-primary ring-2 ring-primary/20" : "border-border"}`}><div className="aspect-[2/1] p-4" style={{ backgroundColor: template.background_color, color: template.text_color }}><strong className="text-sm">{template.handle}</strong><p className={`mt-4 line-clamp-2 text-sm ${template.layout === "bold_statement" ? "font-bold" : ""}`}>Prévia do estilo desta arte.</p></div><div className="p-3"><strong className="text-sm">{template.name}</strong><p className="text-xs text-muted-foreground">{template.niche}</p></div></button>)}</div>{compatibleTemplates.length === 0 && <p className="mt-3 text-sm text-muted-foreground">Nenhum template disponível para este filtro. <Link href="/dashboard/templates" className="text-primary underline">Abra a galeria</Link> para criar um.</p>}</div>}
     </Card>
 
@@ -167,7 +212,7 @@ export default function GeneratePage() {
 
     {step === "ready" && content && image && <div className="grid gap-6 lg:grid-cols-[minmax(360px,.9fr)_minmax(0,1fr)]">
       <div className="space-y-3"><h2 className="font-heading font-semibold">Prévia exata do post</h2><div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm"><div className="flex items-center gap-3 p-4">{selectedPage?.picture_url ? <Image src={selectedPage.picture_url} alt="" width={42} height={42} unoptimized className="h-11 w-11 rounded-full object-cover"/> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 font-bold">{selectedPage?.name?.[0] ?? "P"}</div>}<div><strong className="block text-sm">{selectedPage?.name ?? "Página selecionada"}</strong><span className="text-xs text-muted-foreground">Agora · Público</span></div></div><p className="whitespace-pre-line px-4 pb-4 text-sm leading-relaxed">{postMessage}</p><div className="relative aspect-square bg-surface-2"><Image src={image.url} alt={content.title} fill unoptimized className="object-cover"/></div></div><div className="flex items-center justify-between"><Badge>{image.source === "template" ? `${selectedTemplate?.name ?? "Template"} · sem IA de imagem` : image.source === "ai" ? "Imagem gerada por IA" : "Banco de imagens"}</Badge><button onClick={generate} className="flex items-center gap-1 text-xs text-muted-foreground"><ArrowClockwise size={13}/> Gerar novamente</button></div>{usage && <div className="rounded-xl border border-border bg-card p-3 text-sm"><div className="flex items-center justify-between"><strong>Custo desta geração</strong><span className="font-semibold text-primary">{usage.credits.toFixed(3)} créditos · US$ {usage.estimatedUsd.toFixed(4)}</span></div><p className="mt-1 text-xs text-muted-foreground">{image.source === "template" ? "A arte reutilizável custou 0 crédito; o valor acima é somente do texto." : "Texto e imagem rastreados nesta geração."}</p>{usage.items.map((item, index) => <p key={`${item.operation}-${index}`} className="mt-1 text-xs text-muted-foreground">{item.operation === "text" ? "Texto" : "Imagem"}: {item.model} · {item.credits} crédito(s)</p>)}</div>}</div>
-      <Card className="space-y-4"><p className="text-xs text-muted-foreground">Texto criado por <span className="font-medium capitalize">{content.provider}</span>{renderingTemplate ? " · atualizando a arte…" : ""}</p><Editor label="Chamada inicial" value={content.title} maxLength={120} onChange={(title) => setContent({ ...content, title })}/><TextEditor label="Descrição" value={content.description} rows={4} maxLength={500} onChange={(description) => setContent({ ...content, description })}/>{image.source === "template" && <TextEditor label="Texto dentro da arte (a prévia atualiza automaticamente)" value={content.artText ?? ""} rows={7} maxLength={700} onChange={(artText) => setContent({ ...content, artText })}/>}<div><label className="text-xs font-semibold text-muted-foreground">Hashtags</label><div className="mt-1 flex flex-wrap gap-1.5">{content.hashtags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">#{tag}<button onClick={() => removeHashtag(tag)}><X size={11}/></button></span>)}<input value={hashtagInput} onChange={(event) => setHashtagInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addHashtag())} placeholder="adicionar…" className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none"/></div></div><Editor label="Link de produto ou afiliado (opcional)" value={linkUrl} placeholder="https://..." onChange={setLinkUrl}/>{scheduleOpen && <Editor label="Agendar para" type="datetime-local" value={scheduledAt} onChange={setScheduledAt}/>}<div className="flex flex-wrap gap-2 pt-2"><Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}><FloppyDisk size={16}/> Salvar rascunho</Button>{scheduleOpen ? <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}><CalendarPlus size={16}/> Confirmar agendamento</Button> : <Button variant="secondary" onClick={() => setScheduleOpen(true)}><CalendarPlus size={16}/> Agendar</Button>}<Button onClick={() => save("post_now")} disabled={saving !== null}><Rocket size={16} weight="fill"/> {saving === "post_now" ? "Publicando…" : "Publicar agora"}</Button></div></Card>
+      <Card className="space-y-4"><p className="text-xs text-muted-foreground">Texto criado por <span className="font-medium capitalize">{content.provider}</span>{renderingTemplate ? " · atualizando a arte…" : ""}</p><Editor label="Chamada inicial" value={content.title} maxLength={120} onChange={(title) => setContent({ ...content, title })}/><TextEditor label="Descrição" value={content.description} rows={4} maxLength={500} onChange={(description) => setContent({ ...content, description })}/>{image.source === "template" ? <TextEditor label="Texto dentro da arte (a prévia atualiza automaticamente)" value={content.artText ?? ""} rows={7} maxLength={700} onChange={(artText) => setContent({ ...content, artText })}/> : <Editor label="Gancho curto na imagem (a prévia atualiza automaticamente)" value={content.imageHook ?? content.title} maxLength={90} onChange={(imageHook) => setContent({ ...content, imageHook })}/>}<div><label className="text-xs font-semibold text-muted-foreground">Hashtags</label><div className="mt-1 flex flex-wrap gap-1.5">{content.hashtags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">#{tag}<button onClick={() => removeHashtag(tag)}><X size={11}/></button></span>)}<input value={hashtagInput} onChange={(event) => setHashtagInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addHashtag())} placeholder="adicionar…" className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none"/></div></div><Editor label="Link de produto ou afiliado (opcional)" value={linkUrl} placeholder="https://..." onChange={setLinkUrl}/>{scheduleOpen && <Editor label="Agendar para" type="datetime-local" value={scheduledAt} onChange={setScheduledAt}/>}<div className="flex flex-wrap gap-2 pt-2"><Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}><FloppyDisk size={16}/> Salvar rascunho</Button>{scheduleOpen ? <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}><CalendarPlus size={16}/> Confirmar agendamento</Button> : <Button variant="secondary" onClick={() => setScheduleOpen(true)}><CalendarPlus size={16}/> Agendar</Button>}<Button onClick={() => save("post_now")} disabled={saving !== null}><Rocket size={16} weight="fill"/> {saving === "post_now" ? "Publicando…" : "Publicar agora"}</Button></div></Card>
     </div>}
   </div>;
 }

@@ -78,6 +78,10 @@ create table if not exists posts (
   hashtags text[] not null default '{}',
   image_url text not null,          -- final image used (Supabase Storage URL)
   image_source text not null,       -- 'ai' | 'stock'
+  base_image_url text,              -- raw AI/stock photo before the text overlay
+  image_hook text,
+  image_prompt text,
+  overlay_style text,
   link_url text,                    -- optional link included in the post
   page_id text,
   page_name text,

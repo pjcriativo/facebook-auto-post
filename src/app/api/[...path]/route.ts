@@ -983,11 +983,8 @@ export async function POST(req: Request, ctx: Ctx) {
         facebook_user_token: null,
         facebook_token_expires_at: null,
         facebook_user_name: null,
-        default_page_id: null,
-        default_page_name: null,
         default_page_token: null,
       });
-      await supabaseAdmin().from("pages_cache").delete().neq("page_id", "");
       return json({ ok: true });
     }
 
@@ -1385,13 +1382,26 @@ async function oauthCallback(req: Request, url: URL) {
     } catch {}
 
     try {
-      const pages = await fetchPages();
-      if (pages.length === 1) {
+      const settings = await getSettings();
+      if (settings.default_page_id) {
+        // A business-portfolio Page may be absent from /me/accounts while a
+        // direct lookup can still mint its Page token. Preserve the user's
+        // selection across reconnects and refresh that token first.
+        const page = await fetchPage(settings.default_page_id);
         await updateSettings({
-          default_page_id: pages[0].id,
-          default_page_name: pages[0].name,
-          default_page_token: pages[0].access_token,
+          default_page_id: page.id,
+          default_page_name: page.name,
+          default_page_token: page.access_token,
         });
+      } else {
+        const pages = await fetchPages();
+        if (pages.length === 1) {
+          await updateSettings({
+            default_page_id: pages[0].id,
+            default_page_name: pages[0].name,
+            default_page_token: pages[0].access_token,
+          });
+        }
       }
     } catch {}
 

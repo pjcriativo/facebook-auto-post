@@ -212,6 +212,9 @@ export async function fetchPostEngagement(
   reactions: number;
   comments: number;
   shares: number;
+  clicks: number;
+  views: number;
+  source: "graph_fields" | "post_insights";
   permalinkUrl: string | null;
   raw: Record<string, unknown>;
 }> {
@@ -228,15 +231,38 @@ export async function fetchPostEngagement(
     // remaining Page metrics available through pages_read_engagement.
     if (!(error instanceof Error) || !/pages_read_user_content/i.test(error.message)) throw error;
     commentsAvailable = false;
-    data = await graph(path, {
+    const insights = await graph(`${path}/insights`, {
       access_token: pageToken,
-      fields: "permalink_url,shares,reactions.limit(0).summary(true)",
+      metric: "post_reactions_by_type_total,post_clicks,post_media_view,post_activity_by_action_type",
     });
+    const value = (name: string) =>
+      (insights.data ?? []).find((item: { name?: string }) => item.name === name)?.values?.at(-1)?.value;
+    const total = (input: unknown): number => {
+      if (typeof input === "number") return Math.max(0, input);
+      if (!input || typeof input !== "object") return 0;
+      return Object.values(input as Record<string, unknown>).reduce<number>(
+        (sum, item) => sum + (typeof item === "number" ? Math.max(0, item) : 0),
+        0
+      );
+    };
+    return {
+      reactions: total(value("post_reactions_by_type_total")),
+      comments: 0,
+      shares: 0,
+      clicks: total(value("post_clicks")),
+      views: total(value("post_media_view")),
+      source: "post_insights",
+      permalinkUrl: null,
+      raw: { insights: insights.data ?? [], comments_available: false },
+    };
   }
   return {
     reactions: Math.max(0, Number(data.reactions?.summary?.total_count ?? 0)),
     comments: Math.max(0, Number(data.comments?.summary?.total_count ?? 0)),
     shares: Math.max(0, Number(data.shares?.count ?? 0)),
+    clicks: 0,
+    views: 0,
+    source: "graph_fields",
     permalinkUrl: typeof data.permalink_url === "string" ? data.permalink_url : null,
     raw: { ...data, comments_available: commentsAvailable } as Record<string, unknown>,
   };

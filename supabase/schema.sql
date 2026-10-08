@@ -166,6 +166,9 @@ create table if not exists post_metric_snapshots (
   reactions integer not null default 0,
   comments integer not null default 0,
   shares integer not null default 0,
+  clicks integer not null default 0,
+  views integer not null default 0,
+  metric_source text not null default 'graph_fields',
   viral_score numeric not null default 0,
   permalink_url text,
   raw_data jsonb not null default '{}'::jsonb,
@@ -347,3 +350,6 @@ alter table app_settings drop constraint if exists app_settings_strategy_min_sam
 alter table app_settings add constraint app_settings_strategy_min_samples_check check (strategy_min_samples between 1 and 50);
 alter table app_settings drop constraint if exists app_settings_strategy_exploration_rate_check;
 alter table app_settings add constraint app_settings_strategy_exploration_rate_check check (strategy_exploration_rate between 0 and 0.5);
+alter table post_metric_snapshots add column if not exists clicks integer not null default 0;
+alter table post_metric_snapshots add column if not exists views integer not null default 0;
+alter table post_metric_snapshots add column if not exists metric_source text not null default 'graph_fields';

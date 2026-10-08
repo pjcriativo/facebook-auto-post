@@ -172,6 +172,9 @@ export interface PostMetricSnapshot {
   reactions: number;
   comments: number;
   shares: number;
+  clicks?: number;
+  views?: number;
+  metric_source?: "graph_fields" | "post_insights";
   viral_score: number;
   permalink_url: string | null;
   raw_data: Record<string, unknown>;

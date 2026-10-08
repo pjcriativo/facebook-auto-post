@@ -63,6 +63,9 @@ export async function syncPublishedPostMetrics(options: {
         reactions: metric.reactions,
         comments: metric.comments,
         shares: metric.shares,
+        clicks: metric.clicks,
+        views: metric.views,
+        metric_source: metric.source,
         viral_score: viralScore,
         permalink_url: metric.permalinkUrl,
         raw_data: metric.raw,
@@ -120,9 +123,11 @@ export async function analyticsReport() {
     reactions: sum.reactions + (row.metric?.reactions ?? 0),
     comments: sum.comments + (row.metric?.comments ?? 0),
     shares: sum.shares + (row.metric?.shares ?? 0),
+    clicks: sum.clicks + (row.metric?.clicks ?? 0),
+    views: sum.views + (row.metric?.views ?? 0),
     viralScore: sum.viralScore + Number(row.metric?.viral_score ?? 0),
     credits: sum.credits + row.credits,
-  }), { posts: 0, measured: 0, reactions: 0, comments: 0, shares: 0, viralScore: 0, credits: 0 });
+  }), { posts: 0, measured: 0, reactions: 0, comments: 0, shares: 0, clicks: 0, views: 0, viralScore: 0, credits: 0 });
 
   const grouped = new Map<string, { agentId: string | null; agentName: string; posts: number; measured: number; reactions: number; comments: number; shares: number; viralScore: number }>();
   for (const row of rows) {
@@ -167,12 +172,16 @@ export async function analyticsReport() {
     template: breakdown((row) => row.post.template_id ? templateNames.get(row.post.template_id) ?? "Template removido" : "Sem template"),
   };
   const recommendations: string[] = [];
+  const limitedMetrics = rows.filter((row) => row.metric?.metric_source === "post_insights").length;
+  if (limitedMetrics > 0) {
+    recommendations.push(`${limitedMetrics} post(s) usam Insights básicos; comentários e compartilhamentos serão incluídos após a permissão avançada da Meta.`);
+  }
   if (totals.measured === 0) {
     recommendations.push("Sincronize as métricas após reconectar a Meta para liberar comparações e recomendações.");
   } else {
-    const bestSource = breakdowns.imageSource.find((item) => item.measured > 0);
-    const bestHour = breakdowns.hour.find((item) => item.measured > 0 && item.label !== "Sem horário");
-    const bestLanguage = breakdowns.language.find((item) => item.measured > 0 && item.label !== "Sem idioma registrado");
+    const bestSource = breakdowns.imageSource.find((item) => item.measured > 0 && item.averageScore > 0);
+    const bestHour = breakdowns.hour.find((item) => item.measured > 0 && item.averageScore > 0 && item.label !== "Sem horário");
+    const bestLanguage = breakdowns.language.find((item) => item.measured > 0 && item.averageScore > 0 && item.label !== "Sem idioma registrado");
     if (bestSource) recommendations.push(`${bestSource.label} lidera com média de ${bestSource.averageScore} pontos virais por post medido.`);
     if (bestHour) recommendations.push(`O horário com melhor média até agora é ${bestHour.label}; teste mais publicações próximas desse horário antes de torná-lo padrão.`);
     if (bestLanguage) recommendations.push(`${bestLanguage.label} apresenta a melhor média atual entre os idiomas medidos.`);
@@ -212,6 +221,9 @@ export async function analyticsReport() {
       reactions: metric!.reactions,
       comments: metric!.comments,
       shares: metric!.shares,
+      clicks: metric!.clicks ?? 0,
+      views: metric!.views ?? 0,
+      metricSource: metric!.metric_source ?? "graph_fields",
       viralScore: Number(metric!.viral_score),
       permalinkUrl: metric!.permalink_url,
       fetchedAt: metric!.fetched_at,

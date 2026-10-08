@@ -8,6 +8,59 @@ export type PostStatus = "draft" | "scheduled" | "posted" | "failed";
  * topic list and only borrows trending ideas while that list is empty.
  */
 export type TopicSource = "mine" | "trending" | "mixed";
+export type AgentLanguage = "pt-BR" | "en-US" | "es-419" | "de-DE" | "fr-FR";
+
+export interface AgentLanguageProfile {
+  agent_id: string;
+  locale: AgentLanguage;
+  label: string;
+  instructions: string;
+  enabled: boolean;
+  voice_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageAgentAssignment {
+  page_id: string;
+  agent_id: string;
+  language: AgentLanguage;
+  specialty_weights: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContentAgent {
+  id: string;
+  slug: string;
+  name: string;
+  role: string;
+  description: string;
+  category: string;
+  mission: string;
+  avatar_url: string | null;
+  enabled: boolean;
+  tone: string;
+  audience: string;
+  specialties: string[];
+  content_pillars: string[];
+  forbidden_topics: string[];
+  preferred_ctas: string[];
+  theological_line: string;
+  bible_translation: string;
+  system_prompt: string;
+  primary_model: string | null;
+  fallback_model: string | null;
+  creativity: number;
+  prompt_version: number;
+  visual_strategy: Record<string, unknown>;
+  avatar_config: Record<string, unknown>;
+  voice_config: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  languages?: AgentLanguageProfile[];
+  page_assignments?: PageAgentAssignment[];
+}
 
 export interface Topic {
   id: string;
@@ -100,6 +153,9 @@ export interface Post {
   facebook_post_id: string | null;
   error_message: string | null;
   generation_id?: string | null;
+  agent_id?: string | null;
+  content_language?: AgentLanguage | null;
+  agent_prompt_version?: number | null;
   created_at: string;
 }
 

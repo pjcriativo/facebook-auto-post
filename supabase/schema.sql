@@ -67,6 +67,59 @@ create table if not exists app_settings (
 
 insert into app_settings (id) values (1) on conflict (id) do nothing;
 
+-- Configurable content specialists. Agents can own several Facebook Pages;
+-- each Page has at most one primary agent and one default language.
+create table if not exists content_agents (
+  id uuid primary key default gen_random_uuid(),
+  slug text not null unique,
+  name text not null,
+  role text not null,
+  description text not null default '',
+  category text not null default 'Cristão',
+  mission text not null default '',
+  avatar_url text,
+  enabled boolean not null default true,
+  tone text not null default '',
+  audience text not null default '',
+  specialties text[] not null default '{}',
+  content_pillars text[] not null default '{}',
+  forbidden_topics text[] not null default '{}',
+  preferred_ctas text[] not null default '{}',
+  theological_line text not null default '',
+  bible_translation text not null default '',
+  system_prompt text not null default '',
+  primary_model text,
+  fallback_model text,
+  creativity numeric not null default 0.8,
+  prompt_version integer not null default 1,
+  visual_strategy jsonb not null default '{}'::jsonb,
+  avatar_config jsonb not null default '{}'::jsonb,
+  voice_config jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists agent_languages (
+  agent_id uuid not null references content_agents(id) on delete cascade,
+  locale text not null,
+  label text not null,
+  instructions text not null default '',
+  enabled boolean not null default true,
+  voice_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (agent_id, locale)
+);
+
+create table if not exists page_agent_assignments (
+  page_id text primary key,
+  agent_id uuid not null references content_agents(id) on delete cascade,
+  language text not null default 'pt-BR',
+  specialty_weights jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- One row per generated/queued/published post. Facebook takes a single
 -- `message`, but title/description/hashtags stay separate here so the editor
 -- can keep them apart; they are composed at publish time.
@@ -91,6 +144,9 @@ create table if not exists posts (
   facebook_post_id text,
   error_message text,
   generation_id uuid,
+  agent_id uuid references content_agents(id) on delete set null,
+  content_language text,
+  agent_prompt_version integer,
   created_at timestamptz not null default now()
 );
 
@@ -196,6 +252,9 @@ create table if not exists autopilot_runs (
 -- role. Enabling RLS without public policies prevents the automatically
 -- granted anon/authenticated roles from reading tokens or changing app data.
 alter table app_settings enable row level security;
+alter table content_agents enable row level security;
+alter table agent_languages enable row level security;
+alter table page_agent_assignments enable row level security;
 alter table autopilot_runs enable row level security;
 alter table posts enable row level security;
 alter table pages_cache enable row level security;

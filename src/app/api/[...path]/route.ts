@@ -36,6 +36,16 @@ import {
 } from "@/lib/db/posts";
 import { getSettings, updateSettings } from "@/lib/db/settings";
 import {
+  assignPageAgent,
+  createAgent,
+  getAgent,
+  getPageAgent,
+  listAgents,
+  unassignPageAgent,
+  updateAgent,
+  upsertAgentLanguage,
+} from "@/lib/db/agents";
+import {
   createTemplate,
   deleteTemplate,
   getTemplate,
@@ -72,7 +82,7 @@ import { OAUTH_STATE_COOKIE } from "@/lib/facebook/oauth-state";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { maybeRunAutopilot } from "@/lib/autopilot";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import type { AppSettings, PostStatus } from "@/lib/types";
+import type { AgentLanguage, AppSettings, PostStatus } from "@/lib/types";
 
 /**
  * Every API endpoint lives in this one catch-all handler on purpose.
@@ -252,6 +262,19 @@ export async function GET(req: Request, ctx: Ctx) {
 
     if (route === "templates") {
       return json({ templates: await listTemplates() });
+    }
+
+    if (route === "agents") {
+      return json({ agents: await listAgents() });
+    }
+
+    if (path.length === 2 && path[0] === "agents") {
+      const agent = await getAgent(path[1]);
+      return agent ? json({ agent }) : json({ error: "Agente não encontrado." }, 404);
+    }
+
+    if (path.length === 3 && path[0] === "pages" && path[2] === "agent") {
+      return json({ responsible: await getPageAgent(path[1]) });
     }
 
     if (route === "automation/status") {
@@ -467,6 +490,47 @@ const PasswordBody = z.object({
 
 const ProviderName = z.enum(["kie", "groq", "gemini", "pollinations", "pexels"]);
 const TestProviderBody = z.object({ provider: ProviderName });
+const AgentLanguageCode = z.enum(["pt-BR", "en-US", "es-419", "de-DE", "fr-FR"]);
+const AgentFields = {
+  name: z.string().trim().min(2).max(80),
+  role: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(500),
+  category: z.string().trim().min(2).max(80),
+  mission: z.string().trim().max(500),
+  avatar_url: z.string().url().nullable(),
+  enabled: z.boolean(),
+  tone: z.string().trim().max(500),
+  audience: z.string().trim().max(500),
+  specialties: z.array(z.string().trim().min(1).max(100)).max(30),
+  content_pillars: z.array(z.string().trim().min(1).max(150)).max(30),
+  forbidden_topics: z.array(z.string().trim().min(1).max(200)).max(50),
+  preferred_ctas: z.array(z.string().trim().min(1).max(200)).max(30),
+  theological_line: z.string().trim().max(500),
+  bible_translation: z.string().trim().max(120),
+  system_prompt: z.string().trim().max(8_000),
+  primary_model: z.string().trim().max(120).nullable(),
+  fallback_model: z.string().trim().max(120).nullable(),
+  creativity: z.number().min(0).max(2),
+  visual_strategy: z.record(z.string(), z.unknown()),
+  avatar_config: z.record(z.string(), z.unknown()),
+  voice_config: z.record(z.string(), z.unknown()),
+};
+const CreateAgentBody = z.object({
+  slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  ...AgentFields,
+}).partial().required({ slug: true, name: true, role: true });
+const UpdateAgentBody = z.object(AgentFields).partial();
+const AgentLanguageBody = z.object({
+  label: z.string().trim().min(2).max(80),
+  instructions: z.string().trim().max(2_000),
+  enabled: z.boolean(),
+  voice_id: z.string().trim().max(200).nullable(),
+});
+const PageAgentBody = z.object({
+  agentId: z.string().uuid(),
+  language: AgentLanguageCode,
+  specialtyWeights: z.record(z.string(), z.number().min(0).max(100)).optional(),
+});
 const CreateTemplateBody = z.object({
   name: z.string().trim().min(2).max(80),
   handle: z.string().trim().min(2).max(80),
@@ -608,6 +672,23 @@ export async function POST(req: Request, ctx: Ctx) {
       const parsed = CreateTemplateBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe um nome e um @perfil válidos." }, 400);
       return json({ template: await createTemplate({ ...parsed.data, page_id: parsed.data.page_id ?? null }) }, 201);
+    }
+
+    if (route === "agents") {
+      const parsed = CreateAgentBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: parsed.error.issues[0]?.message ?? "Dados do agente inválidos." }, 400);
+      return json({ agent: await createAgent(parsed.data) }, 201);
+    }
+
+    if (path.length === 3 && path[0] === "pages" && path[2] === "agent") {
+      const parsed = PageAgentBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Escolha um agente e um idioma válidos." }, 400);
+      return json({ assignment: await assignPageAgent(
+        path[1],
+        parsed.data.agentId,
+        parsed.data.language as AgentLanguage,
+        parsed.data.specialtyWeights
+      ) });
     }
 
     if (route === "templates/render") {
@@ -1035,6 +1116,34 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return json({ template: await updateTemplate(path[1], parsed.data) });
     }
 
+    if (path.length === 2 && path[0] === "agents") {
+      const parsed = UpdateAgentBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: parsed.error.issues[0]?.message ?? "Dados do agente inválidos." }, 400);
+      const current = await getAgent(path[1]);
+      if (!current) return json({ error: "Agente não encontrado." }, 404);
+      const promptFields = new Set([
+        "tone", "audience", "specialties", "content_pillars", "forbidden_topics",
+        "preferred_ctas", "theological_line", "bible_translation", "system_prompt",
+        "primary_model", "fallback_model", "creativity",
+      ]);
+      const changesPrompt = Object.keys(parsed.data).some((key) => promptFields.has(key));
+      return json({ agent: await updateAgent(path[1], {
+        ...parsed.data,
+        ...(changesPrompt ? { prompt_version: current.prompt_version + 1 } : {}),
+      }) });
+    }
+
+    if (path.length === 4 && path[0] === "agents" && path[2] === "languages") {
+      const locale = AgentLanguageCode.safeParse(path[3]);
+      const parsed = AgentLanguageBody.safeParse(await req.json().catch(() => null));
+      if (!locale.success || !parsed.success) return json({ error: "Configuração de idioma inválida." }, 400);
+      const current = await getAgent(path[1]);
+      if (!current) return json({ error: "Agente não encontrado." }, 404);
+      const language = await upsertAgentLanguage(path[1], locale.data as AgentLanguage, parsed.data);
+      await updateAgent(path[1], { prompt_version: current.prompt_version + 1 });
+      return json({ language });
+    }
+
     // posts/<id>
     if (path.length === 2 && path[0] === "posts") {
       const id = path[1];
@@ -1079,6 +1188,11 @@ export async function DELETE(req: Request, ctx: Ctx) {
 
     if (path.length === 2 && path[0] === "posts") {
       await deletePostRecord(path[1]);
+      return json({ ok: true });
+    }
+
+    if (path.length === 3 && path[0] === "pages" && path[2] === "agent") {
+      await unassignPageAgent(path[1]);
       return json({ ok: true });
     }
 

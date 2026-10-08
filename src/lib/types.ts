@@ -159,6 +159,20 @@ export interface Post {
   created_at: string;
 }
 
+export interface PostMetricSnapshot {
+  id: string;
+  post_id: string;
+  page_id: string | null;
+  facebook_post_id: string;
+  reactions: number;
+  comments: number;
+  shares: number;
+  viral_score: number;
+  permalink_url: string | null;
+  raw_data: Record<string, unknown>;
+  fetched_at: string;
+}
+
 export interface PageCache {
   page_id: string;
   name: string;

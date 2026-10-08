@@ -146,6 +146,7 @@ export const REQUIRED_PERMISSIONS = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
+  "pages_read_user_content",
 ];
 
 /**
@@ -202,4 +203,28 @@ export async function publishPhoto(input: PublishPhotoInput): Promise<{ id: stri
     { method: "POST" }
   );
   return { id: data.post_id ?? data.id };
+}
+
+/** Stable engagement fields available on Page posts with pages_read_engagement. */
+export async function fetchPostEngagement(
+  facebookPostId: string,
+  pageToken: string
+): Promise<{
+  reactions: number;
+  comments: number;
+  shares: number;
+  permalinkUrl: string | null;
+  raw: Record<string, unknown>;
+}> {
+  const data = await graph(`/${encodeURIComponent(facebookPostId)}`, {
+    access_token: pageToken,
+    fields: "permalink_url,shares,reactions.limit(0).summary(true),comments.limit(0).summary(true)",
+  });
+  return {
+    reactions: Math.max(0, Number(data.reactions?.summary?.total_count ?? 0)),
+    comments: Math.max(0, Number(data.comments?.summary?.total_count ?? 0)),
+    shares: Math.max(0, Number(data.shares?.count ?? 0)),
+    permalinkUrl: typeof data.permalink_url === "string" ? data.permalink_url : null,
+    raw: data as Record<string, unknown>,
+  };
 }

@@ -56,6 +56,7 @@ import {
 import { renderTemplate, renderTemplatePng } from "@/lib/templates/render";
 import { renderPhotoOverlay, renderPhotoOverlayPng } from "@/lib/images/overlay";
 import { generationUsage, usageDashboard } from "@/lib/ai/usage";
+import { analyticsReport, syncPublishedPostMetrics } from "@/lib/analytics";
 import {
   addTopics,
   deleteTopic,
@@ -345,6 +346,10 @@ export async function GET(req: Request, ctx: Ctx) {
         } catch {}
       }
       return json({ ...(await usageDashboard()), balance });
+    }
+
+    if (route === "analytics/report") {
+      return json(await analyticsReport());
     }
 
     if (path.length === 3 && path[0] === "usage" && path[1] === "generation") {
@@ -813,6 +818,12 @@ export async function POST(req: Request, ctx: Ctx) {
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : "Não foi possível gerar a imagem." }, 502);
       }
+    }
+
+    if (route === "analytics/sync") {
+      const body = await req.json().catch(() => ({}));
+      const force = body && typeof body === "object" && (body as { force?: unknown }).force === true;
+      return json(await syncPublishedPostMetrics({ force }));
     }
 
     if (route === "images/overlay/preview" || route === "images/overlay/render") {
@@ -1433,9 +1444,18 @@ async function runCron(req: Request, url: URL) {
     }
   }
 
+  const autopilot = await maybeRunAutopilot();
+  let metrics: Awaited<ReturnType<typeof syncPublishedPostMetrics>> | null = null;
+  try {
+    metrics = await syncPublishedPostMetrics({ limit: 20 });
+  } catch (error) {
+    console.warn("[analytics] automatic metric sync failed:", error);
+  }
+
   return json({
     processedFromQueue: queueResults.length,
     queueResults,
-    autopilot: await maybeRunAutopilot(),
+    autopilot,
+    metrics,
   });
 }

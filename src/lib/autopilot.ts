@@ -9,6 +9,7 @@ import { renderPhotoOverlay } from "@/lib/images/overlay";
 import { getTrendingTopics } from "@/lib/trends";
 import { markTopicUsed, nextTopic, TopicsTableMissingError } from "@/lib/db/topics";
 import { decideTopicOrigin } from "@/lib/topic-origin";
+import { getPageContentAgent } from "@/lib/db/agents";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { localParts, startOfTodayIso } from "@/lib/time";
 import { isFacebookConnected } from "@/lib/types";
@@ -108,9 +109,21 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   const topic = chosen.text;
 
   const generationId = randomUUID();
-  const content = await generateContent(topic, generationId);
+  const responsible = await getPageContentAgent(settings.default_page_id);
+  const content = await generateContent(topic, generationId, {
+    agent: responsible?.agent,
+    language: responsible?.language,
+  });
+  const preferredOverlay = responsible?.agent.visual_strategy?.preferred_overlay;
+  const overlayStyle = preferredOverlay === "card" || preferredOverlay === "center"
+    ? preferredOverlay
+    : "gradient";
+  const photoThemes = Array.isArray(responsible?.agent.visual_strategy?.photo_themes)
+    ? responsible.agent.visual_strategy.photo_themes.filter((item): item is string => typeof item === "string")
+    : [];
   let image;
   let baseImageUrl: string | null = null;
+  let usedImagePrompt: string | null = null;
   if (settings.image_source === "template") {
     const compatible = (await listTemplates()).filter(
       (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
@@ -122,15 +135,19 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
       content.artText || `${content.title}\n\n${content.description}`
     );
   } else {
-    const visualPrompt = settings.image_source === "stock"
+    const baseVisualPrompt = settings.image_source === "stock"
       ? content.stockQuery || content.imagePrompt || topic
       : content.imagePrompt || `${content.title} — ${topic}`;
+    const visualPrompt = (photoThemes.length > 0
+      ? `${baseVisualPrompt}. Preferred visual themes: ${photoThemes.join(", ")}`
+      : baseVisualPrompt).slice(0, 700);
+    usedImagePrompt = visualPrompt;
     const baseImage = await generateImage(visualPrompt, settings.image_source);
     baseImageUrl = baseImage.url;
     image = await renderPhotoOverlay({
       imageUrl: baseImage.url,
       hook: content.imageHook || content.title,
-      style: "gradient",
+      style: overlayStyle,
       pageId: settings.default_page_id,
     }, baseImage.source);
   }
@@ -144,14 +161,17 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     image_source: image.source,
     base_image_url: baseImageUrl,
     image_hook: settings.image_source === "template" ? null : content.imageHook || content.title,
-    image_prompt: settings.image_source === "template" ? null : content.imagePrompt || topic,
-    overlay_style: settings.image_source === "template" ? null : "gradient",
+    image_prompt: usedImagePrompt,
+    overlay_style: settings.image_source === "template" ? null : overlayStyle,
     link_url: null,
     page_id: settings.default_page_id,
     page_name: settings.default_page_name,
     scheduled_at: null,
     status: "draft",
     generation_id: generationId,
+    agent_id: responsible?.agent.id ?? null,
+    content_language: responsible?.language.locale ?? null,
+    agent_prompt_version: responsible?.agent.prompt_version ?? null,
   });
 
   // Recorded once the draft exists, so a failure while generating does not

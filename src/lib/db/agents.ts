@@ -108,6 +108,26 @@ export async function getPageAgent(pageId: string): Promise<{
   return agent ? { assignment: data as PageAgentAssignment, agent } : null;
 }
 
+/** Resolves the exact enabled specialist and language used by generation. */
+export async function getPageContentAgent(pageId: string): Promise<{
+  assignment: PageAgentAssignment;
+  agent: ContentAgent;
+  language: AgentLanguageProfile;
+} | null> {
+  const responsible = await getPageAgent(pageId);
+  if (!responsible) return null;
+  if (!responsible.agent.enabled) {
+    throw new Error("O agente responsável por esta Página está inativo.");
+  }
+  const language = responsible.agent.languages?.find(
+    (item) => item.locale === responsible.assignment.language
+  );
+  if (!language?.enabled) {
+    throw new Error("O idioma vinculado à Página está inativo no perfil do agente.");
+  }
+  return { ...responsible, language };
+}
+
 export async function assignPageAgent(
   pageId: string,
   agentId: string,

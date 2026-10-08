@@ -61,7 +61,7 @@ function extractText(data: Record<string, unknown>): string | null {
   return responseText?.trim() ? responseText : null;
 }
 
-async function runTextModel(model: string, messages: ChatMessage[], apiKey: string) {
+async function runTextModel(model: string, messages: ChatMessage[], apiKey: string, temperature = 0.75) {
   if (model.startsWith("claude-")) {
     const system = messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
     const conversation = messages
@@ -113,11 +113,16 @@ async function runTextModel(model: string, messages: ChatMessage[], apiKey: stri
 
   return kieRequest(`/${model}/v1/chat/completions`, apiKey, {
     method: "POST",
-    body: JSON.stringify({ model, messages, temperature: 0.75, stream: false }),
+    body: JSON.stringify({ model, messages, temperature, stream: false }),
   });
 }
 
-export async function kieChatCompletion(model: string, messages: ChatMessage[], generationId?: string) {
+export async function kieChatCompletion(
+  model: string,
+  messages: ChatMessage[],
+  generationId?: string,
+  temperature = 0.75
+) {
   const credentials = await getAiCredentials();
   if (!credentials.kieApiKey || !credentials.kieEnabled) {
     throw new Error("A geração de texto pela Kie.ai não está ativada.");
@@ -134,7 +139,7 @@ export async function kieChatCompletion(model: string, messages: ChatMessage[], 
   const selected = checkedChatModel(model);
   const started = Date.now();
   try {
-    const data = await runTextModel(selected, messages, credentials.kieApiKey);
+    const data = await runTextModel(selected, messages, credentials.kieApiKey, temperature);
     const content = extractText(data);
     if (!content) {
       throw new Error("A Kie.ai retornou uma resposta vazia.");

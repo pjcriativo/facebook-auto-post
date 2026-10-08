@@ -40,6 +40,7 @@ import {
   createAgent,
   getAgent,
   getPageAgent,
+  getPageContentAgent,
   listAgents,
   unassignPageAgent,
   updateAgent,
@@ -299,6 +300,10 @@ export async function GET(req: Request, ctx: Ctx) {
       }
       const credentials = await getAiCredentials();
       const preferredTemplate = compatibleTemplates.find((item) => item.id === settings.default_template_id) ?? compatibleTemplates[0] ?? null;
+      const responsible = settings.default_page_id ? await getPageAgent(settings.default_page_id) : null;
+      const responsibleLanguage = responsible?.agent.languages?.find(
+        (item) => item.locale === responsible.assignment.language
+      );
       return json({
         connected: Boolean(settings.facebook_user_token),
         defaultPage: settings.default_page_name,
@@ -312,6 +317,15 @@ export async function GET(req: Request, ctx: Ctx) {
         templateRequired: settings.image_source === "template",
         templateReady: settings.image_source !== "template" || Boolean(preferredTemplate),
         preferredTemplate: preferredTemplate ? { id: preferredTemplate.id, name: preferredTemplate.name } : null,
+        agentReady: Boolean(responsible?.agent.enabled && responsibleLanguage?.enabled),
+        responsibleAgent: responsible ? {
+          id: responsible.agent.id,
+          name: responsible.agent.name,
+          role: responsible.agent.role,
+          language: responsible.assignment.language,
+          languageLabel: responsibleLanguage?.label ?? responsible.assignment.language,
+          promptVersion: responsible.agent.prompt_version,
+        } : null,
         cronConfigured: Boolean(env.cronSecret),
         autopilotEnabled: settings.auto_post_enabled,
       });
@@ -422,9 +436,12 @@ const LoginBody = z.object({
   password: z.string(),
 });
 
+const AgentLanguageCode = z.enum(["pt-BR", "en-US", "es-419", "de-DE", "fr-FR"]);
+
 const ContentBody = z.object({
   topic: z.string().trim().min(2).max(200),
   generationId: z.string().uuid().optional(),
+  pageId: z.string().trim().min(1).nullable().optional(),
 });
 
 const ImageBody = z.object({
@@ -458,6 +475,9 @@ const CreatePostBody = z.object({
   action: z.enum(["draft", "schedule", "post_now"]),
   scheduledAt: z.string().datetime().optional(),
   generationId: z.string().uuid().optional(),
+  agentId: z.string().uuid().nullable().optional(),
+  contentLanguage: AgentLanguageCode.nullable().optional(),
+  agentPromptVersion: z.number().int().positive().nullable().optional(),
 });
 
 const DefaultPageBody = z.object({ pageId: z.string().min(1) });
@@ -490,7 +510,6 @@ const PasswordBody = z.object({
 
 const ProviderName = z.enum(["kie", "groq", "gemini", "pollinations", "pexels"]);
 const TestProviderBody = z.object({ provider: ProviderName });
-const AgentLanguageCode = z.enum(["pt-BR", "en-US", "es-419", "de-DE", "fr-FR"]);
 const AgentFields = {
   name: z.string().trim().min(2).max(80),
   role: z.string().trim().min(2).max(120),
@@ -751,7 +770,17 @@ export async function POST(req: Request, ctx: Ctx) {
     if (route === "generate/content") {
       const parsed = ContentBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Informe um tema com 2 a 200 caracteres." }, 400);
-      return json(await generateContent(parsed.data.topic, parsed.data.generationId));
+      try {
+        const responsible = parsed.data.pageId
+          ? await getPageContentAgent(parsed.data.pageId)
+          : null;
+        return json(await generateContent(parsed.data.topic, parsed.data.generationId, {
+          agent: responsible?.agent,
+          language: responsible?.language,
+        }));
+      } catch (err) {
+        return json({ error: err instanceof Error ? err.message : "Não foi possível preparar o agente da Página." }, 409);
+      }
     }
 
     if (route === "generate/image") {
@@ -829,6 +858,9 @@ export async function POST(req: Request, ctx: Ctx) {
         scheduled_at: b.action === "schedule" ? b.scheduledAt! : null,
         status: b.action === "schedule" ? "scheduled" : "draft",
         generation_id: b.generationId ?? null,
+        agent_id: b.agentId ?? null,
+        content_language: b.contentLanguage ?? null,
+        agent_prompt_version: b.agentPromptVersion ?? null,
       });
 
       if (b.action === "post_now") {

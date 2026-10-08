@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowClockwise, ArrowSquareOut, CalendarPlus, CheckCircle, FloppyDisk, Rocket, Sparkle, WarningCircle, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowClockwise, ArrowSquareOut, CalendarPlus, CheckCircle, FloppyDisk, GlobeHemisphereWest, Robot, Rocket, Sparkle, WarningCircle, X } from "@phosphor-icons/react/dist/ssr";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { composeMessage, facebookPostUrl } from "@/lib/types";
-import type { ContentTemplate, GeneratedContent, ImageOverlayStyle, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
+import type { ContentAgent, ContentTemplate, GeneratedContent, ImageOverlayStyle, ImageSource, ImageSourcePref, PageCache } from "@/lib/types";
 
 type Step = "idle" | "generating" | "ready";
 type Usage = { credits: number; estimatedUsd: number; items: Array<{ provider: string; operation: string; model: string; credits: number }> };
-type VisualImage = { url: string; source: ImageSource; baseUrl?: string };
+type VisualImage = { url: string; source: ImageSource; baseUrl?: string; prompt?: string };
 
 export default function GeneratePage() {
   const [topic, setTopic] = useState("");
@@ -36,6 +36,7 @@ export default function GeneratePage() {
   const [hashtagInput, setHashtagInput] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [pages, setPages] = useState<PageCache[]>([]);
+  const [agents, setAgents] = useState<ContentAgent[]>([]);
   const [pageId, setPageId] = useState("");
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduledAt, setScheduledAt] = useState("");
@@ -52,21 +53,45 @@ export default function GeneratePage() {
       fetch("/api/settings").then((r) => r.json()).then((d) => setImagePref(d.image_source ?? "template")),
       fetch("/api/integrations").then((r) => r.json()).then((d) => setPexelsReady(Boolean(d.providers?.pexels?.configured))),
       fetch("/api/facebook/pages").then((r) => r.json()).then((d) => { setPages(d.pages ?? []); if (d.defaultPageId) setPageId(d.defaultPageId); }),
+      fetch("/api/agents").then((r) => r.json()).then((d) => setAgents(d.agents ?? [])),
       fetch("/api/templates").then((r) => r.json()).then((d) => { const enabled = (d.templates ?? []).filter((item: ContentTemplate) => item.enabled); setTemplates(enabled); setTemplateId(enabled[0]?.id ?? ""); }),
     ]).catch(() => {});
     return () => { if (previewBlob.current) URL.revokeObjectURL(previewBlob.current); };
   }, []);
 
   const selectedPage = useMemo(() => pages.find((page) => page.page_id === pageId), [pages, pageId]);
+  const responsibleAgent = agents.find((agent) => agent.page_assignments?.some((item) => item.page_id === pageId));
+  const responsibleAssignment = responsibleAgent?.page_assignments?.find((item) => item.page_id === pageId);
+  const responsible = responsibleAgent && responsibleAssignment
+    ? { agent: responsibleAgent, assignment: responsibleAssignment }
+    : null;
+  const responsibleLanguage = responsible?.agent.languages?.find((item) => item.locale === responsible.assignment.language);
+  const preferredAgentOverlay = responsible?.agent.visual_strategy?.preferred_overlay;
+  const agentPhotoThemes = Array.isArray(responsible?.agent.visual_strategy?.photo_themes)
+    ? responsible.agent.visual_strategy.photo_themes.filter((item): item is string => typeof item === "string")
+    : [];
   const compatibleTemplates = useMemo(() => templates.filter((item) => (!item.page_id || item.page_id === pageId) && (niche === "Todos" || item.niche === niche)), [templates, pageId, niche]);
   const niches = useMemo(() => ["Todos", ...new Set(templates.filter((item) => !item.page_id || item.page_id === pageId).map((item) => item.niche))], [templates, pageId]);
   const selectedTemplate = templates.find((item) => item.id === templateId);
   const postMessage = content ? composeMessage({ title: content.title, description: content.description, hashtags: content.hashtags, link_url: linkUrl || null }) : "";
 
+  useEffect(() => {
+    if (preferredAgentOverlay === "gradient" || preferredAgentOverlay === "card" || preferredAgentOverlay === "center") {
+      // Synchronize the editor with the newly selected specialist's saved visual profile.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOverlayStyle(preferredAgentOverlay);
+    }
+  }, [preferredAgentOverlay]);
+
   function setPreviewImage(url: string, source: ImageSource = "template", baseUrl?: string) {
     if (previewBlob.current) URL.revokeObjectURL(previewBlob.current);
     previewBlob.current = url;
-    setImage({ url, source, baseUrl });
+    setImage((current) => ({
+      url,
+      source,
+      baseUrl,
+      ...(source !== "template" && current?.prompt ? { prompt: current.prompt } : {}),
+    }));
   }
 
   async function waitForImage(jobId: string) {
@@ -137,7 +162,7 @@ export default function GeneratePage() {
     const id = crypto.randomUUID();
     setGenerationId(id); setUsage(null); setError(null); setSuccess(null); setPublishedUrl(null); setStep("generating"); setContent(null); setImage(null);
     try {
-      const contentRes = await fetch("/api/generate/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, generationId: id }) });
+      const contentRes = await fetch("/api/generate/content", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, generationId: id, pageId: pageId || null }) });
       if (!contentRes.ok) throw new Error((await contentRes.json()).error ?? "Não foi possível gerar o conteúdo.");
       const contentData: GeneratedContent = await contentRes.json();
       let imageData: VisualImage;
@@ -146,9 +171,12 @@ export default function GeneratePage() {
         if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Não foi possível montar o template."); }
         const url = URL.createObjectURL(await response.blob()); previewBlob.current = url; imageData = { url, source: "template" };
       } else {
-        const visualPrompt = imagePref === "stock"
+        const baseVisualPrompt = imagePref === "stock"
           ? contentData.stockQuery || contentData.imagePrompt || topic
           : contentData.imagePrompt || topic;
+        const visualPrompt = (agentPhotoThemes.length > 0
+          ? `${baseVisualPrompt}. Preferred visual themes: ${agentPhotoThemes.join(", ")}`
+          : baseVisualPrompt).slice(0, 700);
         const imageRes = await fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: visualPrompt, source: imagePref, generationId: id }) });
         if (!imageRes.ok) throw new Error((await imageRes.json()).error ?? "Não foi possível gerar a imagem.");
         const data = await imageRes.json();
@@ -157,7 +185,7 @@ export default function GeneratePage() {
         const overlayRes = await fetch("/api/images/overlay/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageUrl: rawImage.url, hook, style: overlayStyle, pageId: pageId || null, source: rawImage.source }) });
         if (!overlayRes.ok) throw new Error((await overlayRes.json()).error ?? "Não foi possível aplicar o gancho.");
         const url = URL.createObjectURL(await overlayRes.blob()); previewBlob.current = url;
-        imageData = { url, source: rawImage.source, baseUrl: rawImage.url };
+        imageData = { url, source: rawImage.source, baseUrl: rawImage.url, prompt: visualPrompt };
       }
       setContent(contentData); setImage(imageData); setStep("ready"); await loadUsage(id);
     } catch (err) { setError(err instanceof Error ? err.message : "Algo deu errado."); setStep("idle"); }
@@ -180,7 +208,7 @@ export default function GeneratePage() {
         const response = await fetch("/api/images/overlay/render", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ imageUrl: image.baseUrl, hook: content.imageHook || content.title, style: overlayStyle, pageId: pageId || null, source: image.source }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Não foi possível salvar a arte com o gancho."); finalImage = body;
       }
-      const response = await fetch("/api/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, title: content.title, description: content.description, hashtags: content.hashtags, imageUrl: finalImage.url, imageSource: finalImage.source, baseImageUrl: image.baseUrl, imageHook: image.source === "template" ? undefined : content.imageHook || content.title, imagePrompt: image.source === "template" ? undefined : content.imagePrompt || topic, overlayStyle: image.source === "template" ? undefined : overlayStyle, linkUrl: linkUrl || undefined, pageId: pageId || null, pageName: selectedPage?.name ?? null, generationId, action, scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined }) });
+      const response = await fetch("/api/posts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, title: content.title, description: content.description, hashtags: content.hashtags, imageUrl: finalImage.url, imageSource: finalImage.source, baseImageUrl: image.baseUrl, imageHook: image.source === "template" ? undefined : content.imageHook || content.title, imagePrompt: image.source === "template" ? undefined : image.prompt || content.imagePrompt || topic, overlayStyle: image.source === "template" ? undefined : overlayStyle, linkUrl: linkUrl || undefined, pageId: pageId || null, pageName: selectedPage?.name ?? null, generationId, agentId: content.agentContext?.agentId ?? null, contentLanguage: content.agentContext?.language ?? null, agentPromptVersion: content.agentContext?.promptVersion ?? null, action, scheduledAt: action === "schedule" ? new Date(scheduledAt).toISOString() : undefined }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "Não foi possível salvar o post.");
       if (action === "post_now" && data.post.status === "failed") throw new Error(data.post.error_message ?? "O Facebook rejeitou este post.");
       setSuccess(action === "draft" ? "Salvo como rascunho." : action === "schedule" ? "Post agendado." : "Publicado no Facebook 🎉");
@@ -192,10 +220,11 @@ export default function GeneratePage() {
 
   return <div className="mx-auto max-w-6xl space-y-6">
     <Card><label className="text-sm font-semibold">1. Página e assunto</label><p className="mt-1 text-sm text-muted-foreground">Escolha primeiro a Página para ver somente os templates compatíveis com ela.</p><div className="mt-3 grid gap-3 md:grid-cols-[260px_1fr_auto]">
-      <select value={pageId} onChange={(event) => { setPageId(event.target.value); setTemplateId(""); setError(null); }} className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"><option value="">Selecione uma Página…</option>{pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}</select>
+      <select value={pageId} onChange={(event) => { setPageId(event.target.value); setTemplateId(""); setError(null); setStep("idle"); setContent(null); setImage(null); }} className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"><option value="">Selecione uma Página…</option>{pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}</select>
       <input value={topic} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => event.key === "Enter" && generate()} placeholder="Ex.: uma oração para começar bem o dia" className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/>
       <Button onClick={generate} disabled={step === "generating"}><Sparkle size={16} weight="fill"/> {step === "generating" ? "Gerando…" : "Gerar post"}</Button>
     </div>
+    {pageId && responsible ? <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-3 text-sm"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary"><Robot size={19} weight="fill"/></span><div className="min-w-0 flex-1"><strong className="block">{responsible.agent.name}</strong><span className="text-xs text-muted-foreground">{responsible.agent.role} · instruções v{responsible.agent.prompt_version}</span></div><span className="inline-flex items-center gap-1 rounded-full border border-primary/20 px-2.5 py-1 text-xs text-primary"><GlobeHemisphereWest size={14}/>{responsibleLanguage?.label ?? responsible.assignment.language}</span><Link href={`/dashboard/agents/${responsible.agent.id}`} className="text-xs text-primary underline">Ver perfil</Link></div> : pageId ? <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-3 text-sm"><span>Esta Página ainda usa o redator global porque não possui agente responsável.</span><Link href="/dashboard/pages" className="shrink-0 font-medium text-primary underline">Vincular agente</Link></div> : null}
     {ownTopics.length > 0 && <div className="mt-4 flex flex-wrap gap-2"><span className="mt-1 text-xs text-muted-foreground">Seus temas:</span>{ownTopics.slice(0,8).map((item) => <button key={item} onClick={() => setTopic(item)} className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary">{item}</button>)}<Link href="/dashboard/topics" className="mt-1 text-xs text-muted-foreground underline">Gerenciar</Link></div>}
     {suggestions.length > 0 && <div className="mt-3 flex flex-wrap gap-2"><span className="mt-1 text-xs text-muted-foreground">Ideias:</span>{suggestions.slice(0,6).map((item) => <button key={item} onClick={() => setTopic(item)} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">{item}</button>)}</div>}
     </Card>
@@ -212,7 +241,7 @@ export default function GeneratePage() {
 
     {step === "ready" && content && image && <div className="grid gap-6 lg:grid-cols-[minmax(360px,.9fr)_minmax(0,1fr)]">
       <div className="space-y-3"><h2 className="font-heading font-semibold">Prévia exata do post</h2><div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm"><div className="flex items-center gap-3 p-4">{selectedPage?.picture_url ? <Image src={selectedPage.picture_url} alt="" width={42} height={42} unoptimized className="h-11 w-11 rounded-full object-cover"/> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-2 font-bold">{selectedPage?.name?.[0] ?? "P"}</div>}<div><strong className="block text-sm">{selectedPage?.name ?? "Página selecionada"}</strong><span className="text-xs text-muted-foreground">Agora · Público</span></div></div><p className="whitespace-pre-line px-4 pb-4 text-sm leading-relaxed">{postMessage}</p><div className="relative aspect-square bg-surface-2"><Image src={image.url} alt={content.title} fill unoptimized className="object-cover"/></div></div><div className="flex items-center justify-between"><Badge>{image.source === "template" ? `${selectedTemplate?.name ?? "Template"} · sem IA de imagem` : image.source === "ai" ? "Imagem gerada por IA" : "Banco de imagens"}</Badge><button onClick={generate} className="flex items-center gap-1 text-xs text-muted-foreground"><ArrowClockwise size={13}/> Gerar novamente</button></div>{usage && <div className="rounded-xl border border-border bg-card p-3 text-sm"><div className="flex items-center justify-between"><strong>Custo desta geração</strong><span className="font-semibold text-primary">{usage.credits.toFixed(3)} créditos · US$ {usage.estimatedUsd.toFixed(4)}</span></div><p className="mt-1 text-xs text-muted-foreground">{image.source === "template" ? "A arte reutilizável custou 0 crédito; o valor acima é somente do texto." : "Texto e imagem rastreados nesta geração."}</p>{usage.items.map((item, index) => <p key={`${item.operation}-${index}`} className="mt-1 text-xs text-muted-foreground">{item.operation === "text" ? "Texto" : "Imagem"}: {item.model} · {item.credits} crédito(s)</p>)}</div>}</div>
-      <Card className="space-y-4"><p className="text-xs text-muted-foreground">Texto criado por <span className="font-medium capitalize">{content.provider}</span>{renderingTemplate ? " · atualizando a arte…" : ""}</p><Editor label="Chamada inicial" value={content.title} maxLength={120} onChange={(title) => setContent({ ...content, title })}/><TextEditor label="Descrição" value={content.description} rows={4} maxLength={500} onChange={(description) => setContent({ ...content, description })}/>{image.source === "template" ? <TextEditor label="Texto dentro da arte (a prévia atualiza automaticamente)" value={content.artText ?? ""} rows={7} maxLength={700} onChange={(artText) => setContent({ ...content, artText })}/> : <Editor label="Gancho curto na imagem (a prévia atualiza automaticamente)" value={content.imageHook ?? content.title} maxLength={90} onChange={(imageHook) => setContent({ ...content, imageHook })}/>}<div><label className="text-xs font-semibold text-muted-foreground">Hashtags</label><div className="mt-1 flex flex-wrap gap-1.5">{content.hashtags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">#{tag}<button onClick={() => removeHashtag(tag)}><X size={11}/></button></span>)}<input value={hashtagInput} onChange={(event) => setHashtagInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addHashtag())} placeholder="adicionar…" className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none"/></div></div><Editor label="Link de produto ou afiliado (opcional)" value={linkUrl} placeholder="https://..." onChange={setLinkUrl}/>{scheduleOpen && <Editor label="Agendar para" type="datetime-local" value={scheduledAt} onChange={setScheduledAt}/>}<div className="flex flex-wrap gap-2 pt-2"><Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}><FloppyDisk size={16}/> Salvar rascunho</Button>{scheduleOpen ? <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}><CalendarPlus size={16}/> Confirmar agendamento</Button> : <Button variant="secondary" onClick={() => setScheduleOpen(true)}><CalendarPlus size={16}/> Agendar</Button>}<Button onClick={() => save("post_now")} disabled={saving !== null}><Rocket size={16} weight="fill"/> {saving === "post_now" ? "Publicando…" : "Publicar agora"}</Button></div></Card>
+      <Card className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">Texto criado por <span className="font-medium capitalize">{content.provider}</span>{renderingTemplate ? " · atualizando a arte…" : ""}</p>{content.agentContext && <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary"><Robot size={13}/>{content.agentContext.agentName} · {content.agentContext.languageLabel}</span>}</div><Editor label="Chamada inicial" value={content.title} maxLength={120} onChange={(title) => setContent({ ...content, title })}/><TextEditor label="Descrição" value={content.description} rows={4} maxLength={500} onChange={(description) => setContent({ ...content, description })}/>{image.source === "template" ? <TextEditor label="Texto dentro da arte (a prévia atualiza automaticamente)" value={content.artText ?? ""} rows={7} maxLength={700} onChange={(artText) => setContent({ ...content, artText })}/> : <Editor label="Gancho curto na imagem (a prévia atualiza automaticamente)" value={content.imageHook ?? content.title} maxLength={90} onChange={(imageHook) => setContent({ ...content, imageHook })}/>}<div><label className="text-xs font-semibold text-muted-foreground">Hashtags</label><div className="mt-1 flex flex-wrap gap-1.5">{content.hashtags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs text-accent">#{tag}<button onClick={() => removeHashtag(tag)}><X size={11}/></button></span>)}<input value={hashtagInput} onChange={(event) => setHashtagInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && (event.preventDefault(), addHashtag())} placeholder="adicionar…" className="w-24 rounded-full border border-dashed border-border bg-transparent px-2.5 py-1 text-xs outline-none"/></div></div><Editor label="Link de produto ou afiliado (opcional)" value={linkUrl} placeholder="https://..." onChange={setLinkUrl}/>{scheduleOpen && <Editor label="Agendar para" type="datetime-local" value={scheduledAt} onChange={setScheduledAt}/>}<div className="flex flex-wrap gap-2 pt-2"><Button variant="secondary" onClick={() => save("draft")} disabled={saving !== null}><FloppyDisk size={16}/> Salvar rascunho</Button>{scheduleOpen ? <Button variant="secondary" onClick={() => save("schedule")} disabled={saving !== null}><CalendarPlus size={16}/> Confirmar agendamento</Button> : <Button variant="secondary" onClick={() => setScheduleOpen(true)}><CalendarPlus size={16}/> Agendar</Button>}<Button onClick={() => save("post_now")} disabled={saving !== null}><Rocket size={16} weight="fill"/> {saving === "post_now" ? "Publicando…" : "Publicar agora"}</Button></div></Card>
     </div>}
   </div>;
 }

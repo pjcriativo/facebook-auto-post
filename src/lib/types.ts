@@ -205,6 +205,15 @@ export interface GeneratedContent {
   provider?: ContentProvider;
   /** First provider failure, surfaced so a degraded draft can explain itself. */
   providerError?: string;
+  /** Exact specialist configuration used to write this content. */
+  agentContext?: {
+    agentId: string;
+    agentName: string;
+    role: string;
+    language: AgentLanguage;
+    languageLabel: string;
+    promptVersion: number;
+  } | null;
 }
 
 export interface ContentTemplate {

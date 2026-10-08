@@ -80,6 +80,15 @@ interface AutomationStatus {
   templateRequired: boolean;
   templateReady: boolean;
   preferredTemplate: { id: string; name: string } | null;
+  agentReady: boolean;
+  responsibleAgent: {
+    id: string;
+    name: string;
+    role: string;
+    language: string;
+    languageLabel: string;
+    promptVersion: number;
+  } | null;
   cronConfigured: boolean;
   autopilotEnabled: boolean;
 }
@@ -781,12 +790,14 @@ function SettingsForm() {
             <Ready ok={Boolean(automation?.connected)} label="Facebook conectado" />
             <Ready ok={Boolean(automation?.defaultPage && automation?.pageAccess)} label={automation?.defaultPage ? `Página padrão: ${automation.defaultPage}` : "Página padrão definida"} />
             <Ready ok={Boolean(automation?.aiTextReady)} label="API de texto configurada" />
+            <Ready ok={Boolean(automation?.agentReady)} label={automation?.responsibleAgent ? `Agente: ${automation.responsibleAgent.name} · ${automation.responsibleAgent.languageLabel}` : "Agente responsável vinculado à Página"} />
             <Ready ok={Boolean(automation?.templateReady)} label={automation?.templateRequired ? "Template automático disponível" : "Fonte de imagem disponível"} />
             <Ready ok={Boolean(automation?.cronConfigured)} label="Agendador protegido na Vercel" />
             <Ready ok={settings.auto_post_enabled} label="Piloto automático ativado" />
           </div>
           {automation?.missingPermissions?.length ? <p className="mt-3 text-xs text-destructive">Permissões ausentes na Meta: {automation.missingPermissions.join(", ")}.</p> : null}
           {automation?.pageError ? <p className="mt-2 text-xs text-destructive">{automation.pageError}</p> : null}
+          {!automation?.responsibleAgent ? <p className="mt-2 text-xs text-muted-foreground">Sem vínculo, o Copiloto continua funcionando com o redator global. <Link href="/dashboard/pages" className="text-primary underline">Vincular um agente</Link> ativa especialidade, idioma e modelo próprios.</p> : null}
           <p className="mt-3 text-xs text-muted-foreground">A Vercel consulta a fila a cada hora usando tarefas diárias independentes. Assim, os horários marcados funcionam mesmo com seu computador desligado, inclusive no plano gratuito.</p>
         </div>
 

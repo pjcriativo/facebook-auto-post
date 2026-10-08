@@ -70,8 +70,9 @@ Everything else is optional. See [`.env.example`](.env.example).
 **3. Meta app** — create one at
 [developers.facebook.com/apps](https://developers.facebook.com/apps) with the
 **"Manage everything on your Page"** use case (*not* the Facebook Login one — Meta
-treats them as incompatible). Add `pages_manage_posts` and `pages_read_engagement`,
-create a login configuration, then open your deployment and go to
+treats them as incompatible). Add `pages_manage_posts`, `pages_read_engagement`,
+`pages_read_user_content`, `read_insights`, `pages_manage_metadata` and
+`pages_manage_engagement`, then open your deployment and go to
 **Settings → Meta app**. Paste the App ID, App Secret and configuration ID there — no
 redeploy needed — and copy the redirect URI shown on that screen into your Meta app's
 **Valid OAuth Redirect URIs**.

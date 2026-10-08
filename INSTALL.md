@@ -183,10 +183,10 @@ own name and an email you can open right now.
 > **You never need Business Verification.** Meta offers it and asks for a tax ID
 > and legal documents. That is for serving *other people's* accounts.
 
-### 3.4 Add the two posting permissions
+### 3.4 Add the Page automation permissions
 
 Your app now has `public_profile`, `pages_show_list` and `business_management`.
-Two more are needed. Open:
+Open:
 
 ```
 https://developers.facebook.com/apps/YOUR-APP-ID/use_cases/
@@ -197,9 +197,15 @@ list, and click **Add** next to:
 
 - **`pages_manage_posts`** — lets the app create the post
 - **`pages_read_engagement`** — lets it read the Page it posts to
+- **`pages_read_user_content`** — lets it read engagement on Page posts
+- **`read_insights`** — lets it retrieve Page and post insights
+- **`pages_manage_metadata`** — lets it subscribe the Page to webhooks
+- **`pages_manage_engagement`** — lets it moderate and reply to comments
 
-You should end up seeing the required Page permissions. Skip this and everything still
-connects, then publishing fails with a bare *"(#200) Permissions error"*.
+The first four are required by the current publishing and analytics flow. The last two
+prepare webhook and comment automations and do not block the initial connection if Meta
+does not return them. Missing publishing permissions can otherwise produce a bare
+*"(#200) Permissions error"* after an apparently successful connection.
 
 > Replace `YOUR-APP-ID` with your App ID. Once you have saved your credentials in
 > the app, its Settings screen prints these links with the ID already filled in.
@@ -306,11 +312,9 @@ it. Step 7 covers going public when you are ready.
 
    > **Why empty?** Apps on this use case get *Facebook Login for Business*, where
    > a saved "login configuration" replaces the permission list. In practice those
-   > configurations often cannot be given `pages_manage_posts` at all — the option
-   > is simply not offered — and you connect successfully with permissions
-   > missing. Leaving this blank makes the app request the three permissions
-   > directly, which works. Fill it in only if you have a configuration you know
-   > includes all three.
+   > configurations can omit Page permissions and still appear to connect. Leaving
+   > this blank makes the app request the permissions directly. Fill it in only if
+   > you have a configuration that includes every permission used by the app.
 
 3. Check that the **App Domain** and **Redirect URI** shown on that card match what
    you entered in steps 3.6 and 3.7. They are generated from the address you are

@@ -5,16 +5,18 @@ export const GRAPH_VERSION = "v26.0";
 export const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 /**
- * Scopes needed to list the Pages this person manages and publish to them.
- * All three sit at Standard Access, which every app gets automatically — App
- * Review is only required for Advanced Access, i.e. acting on behalf of people
- * who have no role on the app. For a single-user tool posting to its owner's
- * own Page, no review is involved.
+ * Scopes used by publishing, analytics and the next Page automations. Metadata
+ * and engagement prepare webhook subscriptions and comment moderation; the
+ * callback only blocks when a core publishing or analytics scope is missing.
  */
 export const FACEBOOK_SCOPES = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
+  "pages_read_user_content",
+  "read_insights",
+  "pages_manage_metadata",
+  "pages_manage_engagement",
 ];
 
 /**

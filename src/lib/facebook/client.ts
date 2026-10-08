@@ -146,6 +146,8 @@ export const REQUIRED_PERMISSIONS = [
   "pages_show_list",
   "pages_manage_posts",
   "pages_read_engagement",
+  "pages_read_user_content",
+  "read_insights",
 ];
 
 /**

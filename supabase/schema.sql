@@ -179,10 +179,20 @@ create index if not exists ai_usage_provider_created_idx on ai_usage (provider, 
 create index if not exists ai_usage_generation_idx on ai_usage (generation_id, created_at);
 create index if not exists ai_generation_jobs_status_idx on ai_generation_jobs (status, created_at);
 
+create table if not exists autopilot_runs (
+  slot_key text primary key,
+  status text not null default 'running',
+  post_id uuid,
+  error_message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- The app accesses these tables exclusively from server code with the service
 -- role. Enabling RLS without public policies prevents the automatically
 -- granted anon/authenticated roles from reading tokens or changing app data.
 alter table app_settings enable row level security;
+alter table autopilot_runs enable row level security;
 alter table posts enable row level security;
 alter table pages_cache enable row level security;
 alter table topics enable row level security;

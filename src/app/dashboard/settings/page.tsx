@@ -787,7 +787,7 @@ function SettingsForm() {
           </div>
           {automation?.missingPermissions?.length ? <p className="mt-3 text-xs text-destructive">Permissões ausentes na Meta: {automation.missingPermissions.join(", ")}.</p> : null}
           {automation?.pageError ? <p className="mt-2 text-xs text-destructive">{automation.pageError}</p> : null}
-          <p className="mt-3 text-xs text-muted-foreground">A Vercel executa o horário das 9h mesmo com seu computador desligado. Para 13h e 18h no plano gratuito, será necessário adicionar um agendador externo.</p>
+          <p className="mt-3 text-xs text-muted-foreground">A Vercel consulta a fila a cada hora usando tarefas diárias independentes. Assim, os horários marcados funcionam mesmo com seu computador desligado, inclusive no plano gratuito.</p>
         </div>
 
         {settings.image_source === "template" && (

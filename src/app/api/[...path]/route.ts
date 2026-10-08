@@ -134,7 +134,7 @@ async function cronAuthorized(req: Request, url: URL): Promise<boolean> {
 
 async function guard(route: string, req: Request, url: URL): Promise<Response | null> {
   if (OPEN_ROUTES.has(route)) return null;
-  if (route === "cron/process-queue") {
+  if (route === "cron/process-queue" || route.startsWith("cron/process-queue/")) {
     return (await cronAuthorized(req, url)) ? null : unauthorized();
   }
   return (await hasSession(req)) ? null : unauthorized();
@@ -383,7 +383,7 @@ export async function GET(req: Request, ctx: Ctx) {
       return oauthCallback(req, url);
     }
 
-    if (route === "cron/process-queue") {
+    if (route === "cron/process-queue" || route.startsWith("cron/process-queue/")) {
       return runCron(req, url);
     }
 
@@ -1204,12 +1204,9 @@ async function oauthCallback(req: Request, url: URL) {
 }
 
 /**
- * Autopilot tick. Vercel's Hobby plan permits only one cron run per day — a
- * more frequent schedule in vercel.json is rejected at deploy time — so the
- * built-in cron fires once at 12:00 UTC (09:00 America/Sao_Paulo, the first default
- * posting hour). Every guard in maybeRunAutopilot is idempotent, so the
- * remaining posting slots can be driven by pointing any free external cron
- * (cron-job.org, UptimeRobot) at this same path with the CRON_SECRET.
+ * Queue/autopilot tick. Hobby cron expressions can run at most once per day,
+ * so vercel.json registers one distinct daily path for each UTC hour. The
+ * application timezone and posting-hour guards decide whether a post is due.
  */
 async function runCron(req: Request, url: URL) {
   if (env.cronSecret) {
@@ -1223,8 +1220,31 @@ async function runCron(req: Request, url: URL) {
   const due = await listDuePosts(new Date().toISOString());
   const queueResults = [];
   for (const post of due) {
-    const result = await publishPostNow(post.id);
-    queueResults.push({ id: result.id, status: result.status });
+    // A cron delivery may be duplicated. Reuse the atomic run ledger to make
+    // each scheduled post publish at most once across concurrent invocations.
+    const slotKey = `queue:${post.id}`;
+    const db = supabaseAdmin();
+    const { error: claimError } = await db.from("autopilot_runs").insert({ slot_key: slotKey });
+    if (claimError?.code === "23505") continue;
+    if (claimError) throw new Error(`Não foi possível reservar a publicação ${post.id}: ${claimError.message}`);
+
+    try {
+      const result = await publishPostNow(post.id);
+      await db.from("autopilot_runs").update({
+        status: result.status === "posted" ? "posted" : "failed",
+        post_id: result.id,
+        error_message: result.error_message,
+        updated_at: new Date().toISOString(),
+      }).eq("slot_key", slotKey);
+      queueResults.push({ id: result.id, status: result.status });
+    } catch (error) {
+      await db.from("autopilot_runs").update({
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Falha inesperada na fila.",
+        updated_at: new Date().toISOString(),
+      }).eq("slot_key", slotKey);
+      throw error;
+    }
   }
 
   return json({

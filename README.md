@@ -100,12 +100,11 @@ Environment variables remain optional deployment-time fallbacks:
 
 ### Posting more than once a day
 
-`vercel.json` schedules one daily run, because Vercel's Hobby plan rejects anything more
-frequent — and it rejects it *after* the build succeeds, which surfaces as a deployment
-that builds fine and then fails with no error text. Every autopilot guard is idempotent,
-so to fire the other posting slots, point a free external cron (cron-job.org,
-UptimeRobot) at `/api/cron/process-queue` and set `CRON_SECRET` so only your scheduler
-can trigger it.
+Vercel Hobby limits each cron expression to one run per day. `vercel.json` therefore
+registers 24 distinct daily paths, one for each UTC hour. Together they inspect the
+queue hourly, while the configured timezone and posting-hour guards decide whether
+the autopilot should act. No external scheduler or powered-on local computer is needed.
+The run ledger prevents duplicate cron deliveries from publishing the same post twice.
 
 ## Security notes
 

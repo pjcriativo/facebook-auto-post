@@ -92,6 +92,17 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     return { ran: false, reason: "daily_quota_reached" };
   }
 
+  // Vercel documents that the same cron event may occasionally be delivered
+  // more than once. Claim this Page/hour slot atomically before spending any
+  // credits so duplicate invocations cannot create duplicate posts.
+  const slotKey = `${settings.default_page_id}:${dateKey}:${hour}`;
+  const { error: claimError } = await db.from("autopilot_runs").insert({ slot_key: slotKey });
+  if (claimError?.code === "23505") {
+    return { ran: false, reason: "already_posted_this_slot" };
+  }
+  if (claimError) throw new Error(`Não foi possível reservar o horário automático: ${claimError.message}`);
+
+  try {
   const chosen = await chooseTopic(settings.topic_source);
   const topic = chosen.text;
 
@@ -132,9 +143,23 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   if (chosen.topic) await markTopicUsed(chosen.topic);
 
   const published = await publishPostNow(draft.id);
+  await db.from("autopilot_runs").update({
+    status: published.status === "posted" ? "posted" : "failed",
+    post_id: published.id,
+    error_message: published.error_message,
+    updated_at: new Date().toISOString(),
+  }).eq("slot_key", slotKey);
   if (published.status === "posted") {
     await updateSettings({ last_auto_post_at: new Date().toISOString() });
   }
 
   return { ran: true, post: published };
+  } catch (error) {
+    await db.from("autopilot_runs").update({
+      status: "failed",
+      error_message: error instanceof Error ? error.message : "Falha inesperada no piloto automático.",
+      updated_at: new Date().toISOString(),
+    }).eq("slot_key", slotKey);
+    throw error;
+  }
 }

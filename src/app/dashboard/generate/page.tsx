@@ -149,7 +149,7 @@ export default function GeneratePage() {
 
   return <div className="mx-auto max-w-6xl space-y-6">
     <Card><label className="text-sm font-semibold">1. Página e assunto</label><p className="mt-1 text-sm text-muted-foreground">Escolha primeiro a Página para ver somente os templates compatíveis com ela.</p><div className="mt-3 grid gap-3 md:grid-cols-[260px_1fr_auto]">
-      <select value={pageId} onChange={(event) => { setPageId(event.target.value); setTemplateId(""); }} className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"><option value="">Selecione uma Página…</option>{pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}</select>
+      <select value={pageId} onChange={(event) => { setPageId(event.target.value); setTemplateId(""); setError(null); }} className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"><option value="">Selecione uma Página…</option>{pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}</select>
       <input value={topic} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => event.key === "Enter" && generate()} placeholder="Ex.: uma oração para começar bem o dia" className="rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/>
       <Button onClick={generate} disabled={step === "generating"}><Sparkle size={16} weight="fill"/> {step === "generating" ? "Gerando…" : "Gerar post"}</Button>
     </div>

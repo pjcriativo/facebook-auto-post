@@ -329,6 +329,8 @@ export async function GET(req: Request, ctx: Ctx) {
         } : null,
         cronConfigured: Boolean(env.cronSecret),
         autopilotEnabled: settings.auto_post_enabled,
+        strategyEnabled: settings.strategy_optimization_enabled !== false,
+        strategyMinSamples: Number(settings.strategy_min_samples ?? 3),
       });
     }
 
@@ -999,11 +1001,14 @@ const SettingsBody = z.object({
   image_source: z.enum(["ai", "stock", "mixed", "template"]).optional(),
   utm_suffix: z.string().max(200).optional(),
   auto_post_enabled: z.boolean().optional(),
-  posts_per_day: z.number().int().min(1).max(20).optional(),
+  posts_per_day: z.number().int().min(1).max(24).optional(),
   posting_hours: z.array(z.number().int().min(0).max(23)).min(1).max(24).optional(),
   timezone: z.string().min(1).max(64).optional(),
   topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
   default_template_id: z.string().uuid().nullable().optional(),
+  strategy_optimization_enabled: z.boolean().optional(),
+  strategy_min_samples: z.number().int().min(1).max(50).optional(),
+  strategy_exploration_rate: z.number().min(0).max(0.5).optional(),
 });
 
 const ProfileBody = z.object({

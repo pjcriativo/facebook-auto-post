@@ -59,6 +59,9 @@ interface SettingsState {
   posting_hours: number[];
   timezone: string;
   topic_source?: "mine" | "trending" | "mixed";
+  strategy_optimization_enabled?: boolean;
+  strategy_min_samples?: number;
+  strategy_exploration_rate?: number;
 }
 
 function Ready({ ok, label }: { ok: boolean; label: string }) {
@@ -91,6 +94,8 @@ interface AutomationStatus {
   } | null;
   cronConfigured: boolean;
   autopilotEnabled: boolean;
+  strategyEnabled: boolean;
+  strategyMinSamples: number;
 }
 
 export default function SettingsPage() {
@@ -322,6 +327,14 @@ function SettingsForm() {
     const next = has ? settings.posting_hours.filter((h) => h !== hour) : [...settings.posting_hours, hour].sort((a, b) => a - b);
     setSettings({ ...settings, posting_hours: next });
     save({ posting_hours: next });
+  }
+
+  function distributePostingHours() {
+    if (!settings) return;
+    const count = Math.min(24, Math.max(1, settings.posts_per_day));
+    const hours = Array.from(new Set(Array.from({ length: count }, (_, index) => Math.floor(index * 24 / count))));
+    setSettings({ ...settings, posting_hours: hours });
+    save({ posting_hours: hours });
   }
 
   if (loadError) {
@@ -801,6 +814,42 @@ function SettingsForm() {
           <p className="mt-3 text-xs text-muted-foreground">A Vercel consulta a fila a cada hora usando tarefas diárias independentes. Assim, os horários marcados funcionam mesmo com seu computador desligado, inclusive no plano gratuito.</p>
         </div>
 
+        <div className="mt-4 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Aprendizado automático</p>
+              <p className="mt-1 text-xs text-muted-foreground">O Copiloto compara os resultados da Página e do agente, prioriza o melhor template e mantém testes controlados. A análise não consome tokens.</p>
+            </div>
+            <button
+              onClick={() => {
+                const next = !(settings.strategy_optimization_enabled ?? true);
+                setSettings({ ...settings, strategy_optimization_enabled: next });
+                save({ strategy_optimization_enabled: next });
+              }}
+              aria-label="Ativar ou desativar o aprendizado automático"
+              className={cn("relative h-7 w-12 shrink-0 cursor-pointer rounded-full transition", (settings.strategy_optimization_enabled ?? true) ? "bg-primary" : "bg-surface-2")}
+            >
+              <span className={cn("absolute top-1 h-5 w-5 rounded-full bg-white shadow transition", (settings.strategy_optimization_enabled ?? true) ? "left-6" : "left-1")}/>
+            </button>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Amostra mínima antes de decidir</label>
+              <input type="number" min={1} max={50} value={settings.strategy_min_samples ?? 3} onChange={(event) => setSettings({ ...settings, strategy_min_samples: Number(event.target.value) })} onBlur={(event) => save({ strategy_min_samples: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary"/>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Percentual de testes</label>
+              <select value={settings.strategy_exploration_rate ?? 0.15} onChange={(event) => { const value = Number(event.target.value); setSettings({ ...settings, strategy_exploration_rate: value }); save({ strategy_exploration_rate: value }); }} className="mt-1 w-full rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary">
+                <option value={0.05}>5% · conservador</option>
+                <option value={0.1}>10% · baixo</option>
+                <option value={0.15}>15% · recomendado</option>
+                <option value={0.25}>25% · mais descobertas</option>
+              </select>
+            </div>
+          </div>
+          <Link href="/dashboard/analytics" className="mt-3 inline-block text-xs font-medium text-primary underline">Ver o que o Copiloto está aprendendo</Link>
+        </div>
+
         {settings.image_source === "template" && (
           <div className="mt-4">
             <label className="text-xs font-semibold text-muted-foreground">Template usado pelo piloto automático</label>
@@ -827,7 +876,7 @@ function SettingsForm() {
             <input
               type="number"
               min={1}
-              max={20}
+              max={24}
               value={settings.posts_per_day}
               onChange={(e) => setSettings({ ...settings, posts_per_day: Number(e.target.value) })}
               onBlur={(e) => save({ posts_per_day: Number(e.target.value) })}
@@ -854,9 +903,12 @@ function SettingsForm() {
         </div>
 
         <div className="mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-xs font-semibold text-muted-foreground">
             Horários permitidos para publicação (hora local)
           </label>
+          <button type="button" onClick={distributePostingHours} className="text-xs font-medium text-primary underline">Distribuir meta automaticamente</button>
+          </div>
           <div className="mt-1.5 grid grid-cols-6 gap-1.5 sm:grid-cols-12">
             {Array.from({ length: 24 }, (_, h) => h).map((h) => (
               <button
@@ -873,6 +925,7 @@ function SettingsForm() {
               </button>
             ))}
           </div>
+          {settings.posting_hours.length < settings.posts_per_day && <p className="mt-2 text-xs text-warning">Selecione pelo menos {settings.posts_per_day} horários para alcançar a meta diária. No agendador atual, o limite operacional é 24 posts por dia.</p>}
         </div>
       </Card>
 

@@ -61,6 +61,9 @@ create table if not exists app_settings (
   timezone text not null default 'America/Sao_Paulo',
   last_auto_post_at timestamptz, -- prevents the autopilot firing twice in one posting-hour slot
   topic_source text not null default 'mine',       -- 'mine' | 'trending' | 'mixed'
+  strategy_optimization_enabled boolean not null default true,
+  strategy_min_samples smallint not null default 3,
+  strategy_exploration_rate numeric not null default 0.15,
   updated_at timestamptz not null default now(),
   constraint single_row check (id = 1)
 );
@@ -337,3 +340,10 @@ alter table ai_usage add column if not exists metadata jsonb not null default '{
 alter table posts add column if not exists generation_id uuid;
 alter table posts add column if not exists template_id uuid references content_templates(id) on delete set null;
 create index if not exists posts_template_idx on posts (template_id) where template_id is not null;
+alter table app_settings add column if not exists strategy_optimization_enabled boolean not null default true;
+alter table app_settings add column if not exists strategy_min_samples smallint not null default 3;
+alter table app_settings add column if not exists strategy_exploration_rate numeric not null default 0.15;
+alter table app_settings drop constraint if exists app_settings_strategy_min_samples_check;
+alter table app_settings add constraint app_settings_strategy_min_samples_check check (strategy_min_samples between 1 and 50);
+alter table app_settings drop constraint if exists app_settings_strategy_exploration_rate_check;
+alter table app_settings add constraint app_settings_strategy_exploration_rate_check check (strategy_exploration_rate between 0 and 0.5);

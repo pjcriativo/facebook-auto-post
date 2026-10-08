@@ -7,6 +7,7 @@ import { fetchPage, fetchPostEngagement } from "@/lib/facebook/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { localParts } from "@/lib/time";
 import type { PostMetricSnapshot } from "@/lib/types";
+import { buildContentStrategy } from "@/lib/content-strategy";
 
 const DEFAULT_REFRESH_HOURS = 6;
 
@@ -178,6 +179,11 @@ export async function analyticsReport() {
     if (totals.shares === 0) recommendations.push("Ainda não houve compartilhamentos nos posts medidos; teste ganchos mais curtos e mensagens que funcionem fora do contexto da legenda.");
   }
 
+  const strategyAgentId = agents.find((agent) =>
+    agent.page_assignments?.some((assignment) => assignment.page_id === settings.default_page_id)
+  )?.id ?? null;
+  const strategy = await buildContentStrategy(settings, settings.default_page_id, strategyAgentId, templates);
+
   return {
     totals: {
       ...totals,
@@ -188,6 +194,7 @@ export async function analyticsReport() {
     agents: [...grouped.values()].sort((a, b) => b.viralScore - a.viralScore),
     breakdowns,
     recommendations,
+    strategy,
     topPosts: rows.filter((row) => row.metric).sort((a, b) => Number(b.metric!.viral_score) - Number(a.metric!.viral_score)).slice(0, 20).map(({ post, metric, credits, hour }) => ({
       id: post.id,
       title: post.title,

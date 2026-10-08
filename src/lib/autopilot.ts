@@ -13,6 +13,7 @@ import { getPageContentAgent } from "@/lib/db/agents";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { localParts, startOfTodayIso } from "@/lib/time";
 import { isFacebookConnected } from "@/lib/types";
+import { buildContentStrategy } from "@/lib/content-strategy";
 import type { Post, Topic, TopicSource } from "@/lib/types";
 import { randomUUID } from "node:crypto";
 
@@ -36,7 +37,9 @@ export type AutopilotResult =
  * keep working on an install that has not re-run schema.sql yet.
  */
 async function chooseTopic(
-  source: TopicSource | undefined
+  source: TopicSource | undefined,
+  contentPillars: string[],
+  recentTopics: string[]
 ): Promise<{ text: string; topic: Topic | null }> {
   let own: Topic | null = null;
   if (source !== "trending") {
@@ -47,12 +50,21 @@ async function chooseTopic(
     }
   }
 
-  if (own && decideTopicOrigin(source, true, Math.random()) === "mine") {
-    return { text: own.text, topic: own };
+  const localChoice = own?.text ?? contentPillars
+    .filter((pillar) => pillar.trim())
+    .sort((a, b) => {
+      const aIndex = recentTopics.indexOf(a.trim().toLocaleLowerCase());
+      const bIndex = recentTopics.indexOf(b.trim().toLocaleLowerCase());
+      return (aIndex < 0 ? Number.MIN_SAFE_INTEGER : -aIndex) - (bIndex < 0 ? Number.MIN_SAFE_INTEGER : -bIndex);
+    })[0];
+  if (localChoice && decideTopicOrigin(source, true, Math.random()) === "mine") {
+    return { text: localChoice, topic: own };
   }
 
   const { topics } = await getTrendingTopics();
-  return { text: topics[Math.floor(Math.random() * topics.length)], topic: null };
+  const freshTopics = topics.filter((topic) => !recentTopics.includes(topic.trim().toLocaleLowerCase()));
+  const pool = freshTopics.length ? freshTopics : topics;
+  return { text: pool[Math.floor(Math.random() * pool.length)], topic: null };
 }
 
 /**
@@ -105,11 +117,21 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   if (claimError) throw new Error(`Não foi possível reservar o horário automático: ${claimError.message}`);
 
   try {
-  const chosen = await chooseTopic(settings.topic_source);
-  const topic = chosen.text;
-
   const generationId = randomUUID();
   const responsible = await getPageContentAgent(settings.default_page_id);
+  const templates = await listTemplates();
+  const strategy = await buildContentStrategy(
+    settings,
+    settings.default_page_id,
+    responsible?.agent.id ?? null,
+    templates
+  );
+  const chosen = await chooseTopic(
+    settings.topic_source,
+    responsible?.agent.content_pillars ?? [],
+    strategy.recentTopics
+  );
+  const topic = chosen.text;
   const content = await generateContent(topic, generationId, {
     agent: responsible?.agent,
     language: responsible?.language,
@@ -125,11 +147,20 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
   let baseImageUrl: string | null = null;
   let usedImagePrompt: string | null = null;
   let usedTemplateId: string | null = null;
-  if (settings.image_source === "template") {
-    const compatible = (await listTemplates()).filter(
+  const explore = strategy.ready && Math.random() < strategy.explorationRate;
+  const strategicSource = settings.image_source === "mixed"
+    ? explore
+      ? strategy.recommendedSource === "ai" ? "stock" : "ai"
+      : strategy.recommendedSource
+    : settings.image_source;
+  if (strategicSource === "template") {
+    const compatible = templates.filter(
       (item) => item.enabled && (!item.page_id || item.page_id === settings.default_page_id)
     );
-    const template = compatible.find((item) => item.id === settings.default_template_id) ?? compatible[0];
+    const strategicTemplateId = explore ? strategy.explorationTemplateId : strategy.recommendedTemplateId;
+    const template = compatible.find((item) => item.id === strategicTemplateId)
+      ?? compatible.find((item) => item.id === settings.default_template_id)
+      ?? compatible[0];
     if (!template) throw new Error("Ative pelo menos um template para o piloto automático.");
     usedTemplateId = template.id;
     image = await renderTemplate(
@@ -137,14 +168,14 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
       content.artText || `${content.title}\n\n${content.description}`
     );
   } else {
-    const baseVisualPrompt = settings.image_source === "stock"
+    const baseVisualPrompt = strategicSource === "stock"
       ? content.stockQuery || content.imagePrompt || topic
       : content.imagePrompt || `${content.title} — ${topic}`;
     const visualPrompt = (photoThemes.length > 0
       ? `${baseVisualPrompt}. Preferred visual themes: ${photoThemes.join(", ")}`
       : baseVisualPrompt).slice(0, 700);
     usedImagePrompt = visualPrompt;
-    const baseImage = await generateImage(visualPrompt, settings.image_source);
+    const baseImage = await generateImage(visualPrompt, strategicSource);
     baseImageUrl = baseImage.url;
     image = await renderPhotoOverlay({
       imageUrl: baseImage.url,
@@ -162,9 +193,9 @@ export async function maybeRunAutopilot(): Promise<AutopilotResult> {
     image_url: image.url,
     image_source: image.source,
     base_image_url: baseImageUrl,
-    image_hook: settings.image_source === "template" ? null : content.imageHook || content.title,
+    image_hook: strategicSource === "template" ? null : content.imageHook || content.title,
     image_prompt: usedImagePrompt,
-    overlay_style: settings.image_source === "template" ? null : overlayStyle,
+    overlay_style: strategicSource === "template" ? null : overlayStyle,
     link_url: null,
     page_id: settings.default_page_id,
     page_name: settings.default_page_name,

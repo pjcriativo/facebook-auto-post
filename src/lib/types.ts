@@ -128,6 +128,10 @@ export interface AppSettings {
   last_auto_post_at: string | null;
   /** Absent on databases created before topics existed; treat as "mine". */
   topic_source?: TopicSource;
+  /** Learns visual and timing choices from measured posts without spending AI tokens. */
+  strategy_optimization_enabled?: boolean;
+  strategy_min_samples?: number;
+  strategy_exploration_rate?: number;
   updated_at: string;
 }
 

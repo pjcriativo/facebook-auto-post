@@ -5,11 +5,17 @@ import Link from "next/link";
 import { ArrowClockwise, Star, FlagBanner, Info, Plus } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { PageCache } from "@/lib/types";
+import type { AgentLanguage, ContentAgent, PageCache } from "@/lib/types";
+
+const LANGUAGE_LABELS: Record<AgentLanguage, string> = {
+  "pt-BR": "Português", "en-US": "Inglês", "es-419": "Espanhol", "de-DE": "Alemão", "fr-FR": "Francês",
+};
 
 export default function PagesPage() {
   const [pages, setPages] = useState<PageCache[]>([]);
   const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [agents, setAgents] = useState<ContentAgent[]>([]);
+  const [assignmentSaving, setAssignmentSaving] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [notConnected, setNotConnected] = useState(false);
@@ -23,8 +29,11 @@ export default function PagesPage() {
     setError(null);
     setNotConnected(false);
     try {
-      const res = await fetch(`/api/facebook/pages${refresh ? "?refresh=1" : ""}`);
-      const data = await res.json();
+      const [res, agentsRes] = await Promise.all([
+        fetch(`/api/facebook/pages${refresh ? "?refresh=1" : ""}`),
+        fetch("/api/agents"),
+      ]);
+      const [data, agentsData] = await Promise.all([res.json(), agentsRes.json()]);
       if (res.status === 409) {
         setNotConnected(true);
         return;
@@ -32,6 +41,7 @@ export default function PagesPage() {
       if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar as Páginas.");
       setPages(data.pages ?? []);
       setDefaultId(data.defaultPageId ?? null);
+      if (agentsRes.ok) setAgents((agentsData.agents ?? []).filter((agent: ContentAgent) => agent.enabled));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar as Páginas.");
     } finally {
@@ -80,6 +90,26 @@ export default function PagesPage() {
     } finally {
       setAdding(false);
     }
+  }
+
+  function assignmentFor(pageId: string) {
+    for (const agent of agents) {
+      const assignment = agent.page_assignments?.find((item) => item.page_id === pageId);
+      if (assignment) return { agent, assignment };
+    }
+    return null;
+  }
+
+  async function changeAgent(pageId: string, agentId: string, language: AgentLanguage = "pt-BR") {
+    setAssignmentSaving(pageId); setError(null);
+    try {
+      const response = agentId
+        ? await fetch(`/api/pages/${encodeURIComponent(pageId)}/agent`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ agentId, language }) })
+        : await fetch(`/api/pages/${encodeURIComponent(pageId)}/agent`, { method: "DELETE" });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Não foi possível alterar o agente responsável.");
+      await load(false);
+    } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível alterar o agente responsável."); }
+    finally { setAssignmentSaving(null); }
   }
 
   if (notConnected) {
@@ -155,25 +185,24 @@ export default function PagesPage() {
           <div className="divide-y divide-border">
             {pages.map((page) => {
               const isDefault = page.page_id === defaultId;
+              const responsible = assignmentFor(page.page_id);
+              const enabledLanguages = responsible?.agent.languages?.filter((item) => item.enabled) ?? [];
               return (
-                <div key={page.page_id} className="flex items-center justify-between py-3.5">
+                <div key={page.page_id} className="flex flex-col gap-3 py-4 xl:flex-row xl:items-center">
                   <div className="flex items-center gap-3">
                     <FlagBanner size={16} className="text-muted-foreground" />
-                    <div>
+                    <div className="min-w-52">
                       <p className="font-medium text-foreground">{page.name}</p>
                       {page.category && (
                         <p className="text-xs text-muted-foreground">{page.category}</p>
                       )}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    variant={isDefault ? "primary" : "secondary"}
-                    onClick={() => setDefault(page)}
-                  >
-                    <Star size={14} weight={isDefault ? "fill" : "regular"} />
-                    {isDefault ? "Padrão" : "Definir como padrão"}
-                  </Button>
+                  <div className="grid flex-1 gap-2 sm:grid-cols-2 xl:max-w-2xl">
+                    <label className="text-xs font-semibold text-muted-foreground">Agente responsável<select value={responsible?.agent.id ?? ""} disabled={assignmentSaving === page.page_id} onChange={(event) => changeAgent(page.page_id, event.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary"><option value="">Sem agente</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
+                    <label className="text-xs font-semibold text-muted-foreground">Idioma da Página<select value={responsible?.assignment.language ?? "pt-BR"} disabled={!responsible || assignmentSaving === page.page_id} onChange={(event) => responsible && changeAgent(page.page_id, responsible.agent.id, event.target.value as AgentLanguage)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm font-normal text-foreground outline-none focus:border-primary disabled:opacity-50">{(enabledLanguages.length ? enabledLanguages.map((item) => item.locale) : Object.keys(LANGUAGE_LABELS) as AgentLanguage[]).map((locale) => <option key={locale} value={locale}>{LANGUAGE_LABELS[locale]}</option>)}</select></label>
+                  </div>
+                  <Button size="sm" variant={isDefault ? "primary" : "secondary"} onClick={() => setDefault(page)}><Star size={14} weight={isDefault ? "fill" : "regular"}/>{isDefault ? "Padrão" : "Definir como padrão"}</Button>
                 </div>
               );
             })}

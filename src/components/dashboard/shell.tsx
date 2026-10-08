@@ -13,6 +13,7 @@ import {
   GearSix,
   PlugsConnected,
   ImagesSquare,
+  Robot,
   List,
   X,
   SignOut,
@@ -29,6 +30,7 @@ const NAV = [
   { href: "/dashboard/queue", label: "Fila", icon: ClockCountdown },
   { href: "/dashboard/history", label: "Histórico", icon: ListChecks },
   { href: "/dashboard/pages", label: "Páginas", icon: FlagBanner },
+  { href: "/dashboard/agents", label: "Agentes", icon: Robot },
   { href: "/dashboard/templates", label: "Templates", icon: ImagesSquare },
   { href: "/dashboard/apis", label: "APIs", icon: PlugsConnected },
   { href: "/dashboard/settings", label: "Configurações", icon: GearSix },
@@ -41,6 +43,7 @@ const TITLES: Record<string, string> = {
   "/dashboard/queue": "Fila",
   "/dashboard/history": "Histórico",
   "/dashboard/pages": "Páginas",
+  "/dashboard/agents": "Agentes",
   "/dashboard/templates": "Templates",
   "/dashboard/apis": "APIs",
   "/dashboard/settings": "Configurações",
@@ -51,8 +54,9 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const title =
-    TITLES[pathname] ?? TITLES[Object.keys(TITLES).find((k) => pathname.startsWith(k)) ?? ""] ?? "";
+  const title = TITLES[pathname] ?? TITLES[
+    Object.keys(TITLES).sort((a, b) => b.length - a.length).find((key) => pathname.startsWith(`${key}/`)) ?? ""
+  ] ?? "";
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });

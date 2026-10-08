@@ -11,6 +11,14 @@ export type AgentInput = Pick<ContentAgent, "slug" | "name" | "role"> &
 
 export type AgentPatch = Partial<Omit<ContentAgent, "id" | "created_at" | "updated_at" | "languages" | "page_assignments">>;
 
+const DEFAULT_LANGUAGES: Array<Pick<AgentLanguageProfile, "locale" | "label" | "instructions">> = [
+  { locale: "pt-BR", label: "Português (Brasil)", instructions: "Escreva diretamente em português brasileiro natural, evitando construções de português europeu." },
+  { locale: "en-US", label: "English (United States)", instructions: "Write directly in natural American English. Adapt cultural references instead of translating Portuguese literally." },
+  { locale: "es-419", label: "Español (Latinoamérica)", instructions: "Escribe directamente en español latinoamericano natural. Adapta expresiones y referencias culturales; no traduzcas literalmente." },
+  { locale: "de-DE", label: "Deutsch", instructions: "Schreibe direkt in natürlichem Deutsch für Deutschland. Passe kulturelle Bezüge an und übersetze nicht wörtlich." },
+  { locale: "fr-FR", label: "Français", instructions: "Rédige directement en français naturel de France. Adapte les références culturelles sans traduire littéralement." },
+];
+
 async function attachRelations(agents: ContentAgent[]): Promise<ContentAgent[]> {
   if (agents.length === 0) return agents;
   const ids = agents.map((agent) => agent.id);
@@ -46,8 +54,16 @@ export async function getAgent(id: string): Promise<ContentAgent | null> {
 }
 
 export async function createAgent(input: AgentInput): Promise<ContentAgent> {
-  const { data, error } = await supabaseAdmin().from("content_agents").insert(input).select().single();
+  const db = supabaseAdmin();
+  const { data, error } = await db.from("content_agents").insert(input).select().single();
   if (error || !data) throw new Error(`Não foi possível criar o agente: ${error?.message}`);
+  const { error: languageError } = await db.from("agent_languages").insert(
+    DEFAULT_LANGUAGES.map((language) => ({ agent_id: data.id, ...language }))
+  );
+  if (languageError) {
+    await db.from("content_agents").delete().eq("id", data.id);
+    throw new Error(`Não foi possível preparar os idiomas do novo agente: ${languageError.message}`);
+  }
   return (await attachRelations([data as ContentAgent]))[0];
 }
 

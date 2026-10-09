@@ -31,6 +31,8 @@ const LANGUAGE_NAMES: Record<AgentLanguage, string> = {
 export interface ContentGenerationOptions {
   agent?: ContentAgent | null;
   language?: AgentLanguageProfile | null;
+  pageId?: string;
+  dailyCreditLimit?: number | null;
 }
 
 function systemPrompt(options: ContentGenerationOptions): string {
@@ -215,7 +217,9 @@ function providerChain(
   system: string,
   temperature: number,
   generationId?: string,
-  preferredModels: Array<string | null | undefined> = []
+  preferredModels: Array<string | null | undefined> = [],
+  pageId?: string,
+  dailyCreditLimit?: number | null
 ): Attempt[] {
   const chain: Attempt[] = [];
 
@@ -230,7 +234,7 @@ function providerChain(
           kieChatCompletion(model, [
             { role: "system", content: system },
             { role: "user", content: `Tema: ${topic}` },
-          ], generationId, temperature),
+          ], generationId, temperature, pageId, dailyCreditLimit),
       });
     }
   }
@@ -307,7 +311,9 @@ export async function generateContent(
     prompt,
     temperature,
     generationId,
-    [options.agent?.primary_model, options.agent?.fallback_model]
+    [options.agent?.primary_model, options.agent?.fallback_model],
+    options.pageId,
+    options.dailyCreditLimit
   )) {
     try {
       return { ...parseContent(await run()), provider, agentContext };

@@ -68,7 +68,74 @@ export interface Topic {
   enabled: boolean;
   use_count: number;
   last_used_at: string | null;
+  page_id?: string | null;
+  agent_id?: string | null;
+  pillar?: string | null;
+  language?: AgentLanguage;
   created_at: string;
+}
+
+export interface PageAutomationSettings {
+  page_id: string;
+  enabled: boolean;
+  target_posts_per_day: number;
+  timezone: string;
+  active_start_minute: number;
+  active_end_minute: number;
+  schedule_jitter_minutes: number;
+  topic_source: TopicSource;
+  image_source: ImageSourcePref;
+  default_template_id: string | null;
+  daily_credit_limit: number | null;
+  retention_days: number;
+  strategy_enabled: boolean;
+  strategy_min_samples: number;
+  exploration_rate: number;
+  last_planned_at: string | null;
+  last_published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageAgentPoolMember {
+  page_id: string;
+  agent_id: string;
+  weight: number;
+  is_primary: boolean;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PublicationJobStatus =
+  | "planned"
+  | "generating"
+  | "ready"
+  | "publishing"
+  | "published"
+  | "retry"
+  | "blocked"
+  | "failed"
+  | "cancelled";
+
+export interface PublicationJob {
+  id: string;
+  page_id: string;
+  agent_id: string | null;
+  scheduled_at: string;
+  status: PublicationJobStatus;
+  post_id: string | null;
+  idempotency_key: string;
+  attempts: number;
+  max_attempts: number;
+  next_retry_at: string | null;
+  lease_until: string | null;
+  locked_by: string | null;
+  quality_score: number | null;
+  quality_checks: Record<string, unknown>;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AppSettings {
@@ -161,6 +228,7 @@ export interface Post {
   agent_id?: string | null;
   content_language?: AgentLanguage | null;
   agent_prompt_version?: number | null;
+  publication_job_id?: string | null;
   created_at: string;
 }
 

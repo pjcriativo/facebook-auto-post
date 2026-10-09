@@ -35,11 +35,13 @@ export function normaliseTopic(raw: string): string {
     .slice(0, MAX_TOPIC_LENGTH);
 }
 
-export async function listTopics(): Promise<Topic[]> {
-  const { data, error } = await supabaseAdmin()
+export async function listTopics(pageId?: string | null): Promise<Topic[]> {
+  let query = supabaseAdmin()
     .from("topics")
     .select("*")
     .order("created_at", { ascending: true });
+  query = pageId ? query.eq("page_id", pageId) : query.is("page_id", null);
+  const { data, error } = await query;
   raise(error, "listar os temas");
   return (data ?? []) as Topic[];
 }
@@ -49,8 +51,8 @@ export async function listTopics(): Promise<Topic[]> {
  * case-insensitive, both within the pasted batch and against the stored list,
  * so pasting the same list twice changes nothing.
  */
-export async function addTopics(rawTexts: string[]): Promise<{ added: number; skipped: number }> {
-  const existing = new Set((await listTopics()).map((t) => t.text.toLowerCase()));
+export async function addTopics(rawTexts: string[], pageId?: string | null): Promise<{ added: number; skipped: number }> {
+  const existing = new Set((await listTopics(pageId)).map((t) => t.text.toLowerCase()));
 
   const fresh: string[] = [];
   let skipped = 0;
@@ -69,7 +71,7 @@ export async function addTopics(rawTexts: string[]): Promise<{ added: number; sk
   if (fresh.length > 0) {
     const { error } = await supabaseAdmin()
       .from("topics")
-      .insert(fresh.map((text) => ({ text })));
+      .insert(fresh.map((text) => ({ text, page_id: pageId ?? null })));
     raise(error, "adicionar os temas");
   }
 
@@ -101,14 +103,16 @@ export async function deleteTopic(id: string): Promise<void> {
  * whole list before anything repeats, and "next up" stays predictable enough
  * to show on screen.
  */
-export async function nextTopic(): Promise<Topic | null> {
-  const { data, error } = await supabaseAdmin()
+export async function nextTopic(pageId?: string | null): Promise<Topic | null> {
+  let query = supabaseAdmin()
     .from("topics")
     .select("*")
     .eq("enabled", true)
     .order("last_used_at", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true })
     .limit(1);
+  query = pageId ? query.eq("page_id", pageId) : query.is("page_id", null);
+  const { data, error } = await query;
   raise(error, "escolher um tema");
   return ((data ?? [])[0] as Topic | undefined) ?? null;
 }

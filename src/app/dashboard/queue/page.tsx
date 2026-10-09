@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Rocket, Trash, PencilSimple, X, Check } from "@phosphor-icons/react/dist/ssr";
+import { Rocket, Trash, PencilSimple, X, Check, Robot } from "@phosphor-icons/react/dist/ssr";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/badge";
 import { facebookPostUrl } from "@/lib/types";
-import type { Post } from "@/lib/types";
+import type { PageCache, Post, PublicationJob } from "@/lib/types";
 
 function toLocalInputValue(iso: string | null) {
   if (!iso) return "";
@@ -17,6 +17,8 @@ function toLocalInputValue(iso: string | null) {
 
 export default function QueuePage() {
   const [posts, setPosts] = useState<Post[]>([]);
+  const [jobs, setJobs] = useState<PublicationJob[]>([]);
+  const [pageNames, setPageNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -28,10 +30,16 @@ export default function QueuePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/posts?status=draft,scheduled");
-      const data = await res.json();
+      const [res, jobsRes, pagesRes] = await Promise.all([
+        fetch("/api/posts?status=draft,scheduled"),
+        fetch("/api/page-automations"),
+        fetch("/api/facebook/pages"),
+      ]);
+      const [data, jobsData, pagesData] = await Promise.all([res.json(), jobsRes.json(), pagesRes.json()]);
       if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar a fila.");
       setPosts(data.posts ?? []);
+      if (jobsRes.ok) setJobs((jobsData.jobs ?? []).filter((job: PublicationJob) => !["published", "cancelled"].includes(job.status)).slice(0, 30));
+      if (pagesRes.ok) setPageNames(Object.fromEntries(((pagesData.pages ?? []) as PageCache[]).map((page) => [page.page_id, page.name])));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível carregar a fila.");
     } finally {
@@ -112,6 +120,32 @@ export default function QueuePage() {
             Ver post ↗
           </a>
         </div>
+      )}
+
+      {!loading && jobs.length > 0 && (
+        <Card>
+          <div className="flex items-center gap-2">
+            <Robot size={20} className="text-primary" />
+            <div>
+              <h2 className="font-heading font-bold text-foreground">Planejamento do Copiloto V2</h2>
+              <p className="text-xs text-muted-foreground">Horários reservados por Página, incluindo conteúdos ainda em preparação.</p>
+            </div>
+          </div>
+          <div className="mt-3 divide-y divide-border">
+            {jobs.map((job) => (
+              <div key={job.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
+                <div>
+                  <span className="font-medium text-foreground">{pageNames[job.page_id] ?? `Página ${job.page_id}`}</span>
+                  <span className="ml-2 text-muted-foreground">{new Date(job.scheduled_at).toLocaleString("pt-BR")}</span>
+                </div>
+                <span className={job.status === "failed" || job.status === "blocked" ? "text-destructive" : "text-primary"}>
+                  {job.status === "planned" ? "Planejado" : job.status === "generating" ? "Gerando" : job.status === "ready" ? "Pronto" : job.status === "retry" ? "Nova tentativa" : job.status === "blocked" ? "Bloqueado pela qualidade" : "Falhou"}
+                </span>
+                {job.error_message && <p className="w-full text-xs text-destructive">{job.error_message}</p>}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {!error && (

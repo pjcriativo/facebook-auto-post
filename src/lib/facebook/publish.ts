@@ -1,8 +1,9 @@
-import { fetchPage, publishPhoto, NoPageSelectedError } from "@/lib/facebook/client";
+import { getPageAccessToken, publishPhoto, NoPageSelectedError } from "@/lib/facebook/client";
 import { getPost, updatePostRecord } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { composeMessage } from "@/lib/types";
 import type { Post } from "@/lib/types";
+import { getPublicationJob, updatePageAutomation, updatePublicationJob } from "@/lib/db/page-automation";
 
 /**
  * Publishes one queued post to its Facebook Page and records the outcome.
@@ -31,8 +32,7 @@ export async function publishPostNow(postId: string): Promise<Post> {
 
   try {
     if (!pageToken) {
-      const selectedPage = await fetchPage(pageId);
-      pageToken = selectedPage.access_token;
+      pageToken = await getPageAccessToken(pageId);
     }
     const result = await publishPhoto({
       pageId,
@@ -41,12 +41,22 @@ export async function publishPostNow(postId: string): Promise<Post> {
       imageUrl: post.image_url,
     });
 
-    return await updatePostRecord(postId, {
+    const published = await updatePostRecord(postId, {
       status: "posted",
       facebook_post_id: result.id,
       posted_at: new Date().toISOString(),
       error_message: null,
     });
+    if (post.publication_job_id) {
+      await updatePublicationJob(post.publication_job_id, {
+        status: "published",
+        error_message: null,
+        locked_by: null,
+        lease_until: null,
+      });
+      await updatePageAutomation(pageId, { last_published_at: published.posted_at });
+    }
+    return published;
   } catch (err) {
     let message = err instanceof Error ? err.message : "Erro desconhecido durante a publicação.";
 
@@ -60,6 +70,26 @@ export async function publishPostNow(postId: string): Promise<Post> {
         "para emitir um novo token.";
     }
 
-    return await updatePostRecord(postId, { status: "failed", error_message: message });
+    const failed = await updatePostRecord(postId, { status: "failed", error_message: message });
+    if (!post.publication_job_id) return failed;
+
+    const job = await getPublicationJob(post.publication_job_id);
+    const attempts = (job?.attempts ?? 0) + 1;
+    if (job && attempts < job.max_attempts) {
+      const retryAt = new Date(Date.now() + attempts * 15 * 60_000).toISOString();
+      await updatePublicationJob(job.id, {
+        status: "retry",
+        attempts,
+        next_retry_at: retryAt,
+        error_message: message,
+      });
+      return updatePostRecord(postId, { status: "scheduled", scheduled_at: retryAt });
+    }
+    await updatePublicationJob(post.publication_job_id, {
+      status: "failed",
+      attempts,
+      error_message: message,
+    });
+    return failed;
   }
 }

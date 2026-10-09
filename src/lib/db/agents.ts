@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { syncPrimaryAgentPool } from "@/lib/db/page-automation";
 import type {
   AgentLanguage,
   AgentLanguageProfile,
@@ -152,6 +153,7 @@ export async function assignPageAgent(
     updated_at: new Date().toISOString(),
   }, { onConflict: "page_id" }).select().single();
   if (error || !data) throw new Error(`Não foi possível vincular o agente à Página: ${error?.message}`);
+  await syncPrimaryAgentPool(pageId, agentId);
   return data as PageAgentAssignment;
 }
 

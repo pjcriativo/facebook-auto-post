@@ -5,6 +5,7 @@ import path from "node:path";
 import * as fontkit from "fontkit";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ImageOverlayStyle, ImageSource } from "@/lib/types";
+import { optimizePostImage } from "@/lib/images/optimize";
 
 const SIZE = 1280;
 const BUCKET = "post-images";
@@ -170,10 +171,11 @@ export async function renderPhotoOverlay(
   source: Exclude<ImageSource, "template">
 ): Promise<{ url: string; source: Exclude<ImageSource, "template"> }> {
   const png = await renderPhotoOverlayPng(input);
-  const objectPath = `overlays/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.png`;
+  const optimized = await optimizePostImage(png);
+  const objectPath = `overlays/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
   const db = supabaseAdmin();
-  const { error } = await db.storage.from(BUCKET).upload(objectPath, png, {
-    contentType: "image/png",
+  const { error } = await db.storage.from(BUCKET).upload(objectPath, optimized.bytes, {
+    contentType: "image/jpeg",
     cacheControl: "31536000",
     upsert: false,
   });

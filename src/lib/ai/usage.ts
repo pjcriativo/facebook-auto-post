@@ -20,6 +20,7 @@ export async function recordAiUsage(input: {
   latencyMs?: number;
   errorMessage?: string;
   generationId?: string;
+  pageId?: string;
   metadata?: Record<string, unknown>;
 }) {
   try {
@@ -32,6 +33,7 @@ export async function recordAiUsage(input: {
       latency_ms: input.latencyMs ?? null,
       error_message: input.errorMessage ?? null,
       generation_id: input.generationId ?? null,
+      page_id: input.pageId ?? null,
       metadata: input.metadata ?? {},
     });
   } catch {
@@ -39,15 +41,17 @@ export async function recordAiUsage(input: {
   }
 }
 
-export async function kieCreditsUsedToday(): Promise<number> {
+export async function kieCreditsUsedToday(pageId?: string): Promise<number> {
   const start = new Date();
   start.setUTCHours(0, 0, 0, 0);
-  const { data, error } = await supabaseAdmin()
+  let query = supabaseAdmin()
     .from("ai_usage")
     .select("credits_used")
     .eq("provider", "kie")
     .eq("status", "success")
     .gte("created_at", start.toISOString());
+  if (pageId) query = query.eq("page_id", pageId);
+  const { data, error } = await query;
   if (error) return 0;
   return (data ?? []).reduce((sum, item) => sum + Number(item.credits_used ?? 0), 0);
 }

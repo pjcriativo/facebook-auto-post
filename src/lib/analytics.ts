@@ -3,19 +3,19 @@ import { listPosts } from "@/lib/db/posts";
 import { getSettings } from "@/lib/db/settings";
 import { listTemplates } from "@/lib/db/templates";
 import { KIE_CREDIT_USD } from "@/lib/ai/usage";
-import { fetchPage, fetchPostEngagement } from "@/lib/facebook/client";
+import { fetchPostEngagement, getPageAccessToken } from "@/lib/facebook/client";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { localParts } from "@/lib/time";
 import type { PostMetricSnapshot } from "@/lib/types";
 import { buildContentStrategy } from "@/lib/content-strategy";
 
-const DEFAULT_REFRESH_HOURS = 6;
-
 export async function syncPublishedPostMetrics(options: {
   limit?: number;
   force?: boolean;
+  maxUpdates?: number;
 } = {}) {
-  const limit = Math.min(100, Math.max(1, options.limit ?? 30));
+  const limit = Math.min(500, Math.max(1, options.limit ?? 150));
+  const maxUpdates = Math.min(100, Math.max(1, options.maxUpdates ?? 20));
   const posts = (await listPosts({ status: "posted", limit })).filter(
     (post) => post.facebook_post_id && post.page_id
   );
@@ -39,10 +39,14 @@ export async function syncPublishedPostMetrics(options: {
   let updated = 0;
   let skipped = 0;
   const failures: Array<{ postId: string; error: string }> = [];
-  const freshAfter = Date.now() - DEFAULT_REFRESH_HOURS * 60 * 60 * 1000;
+  const now = Date.now();
 
   for (const post of posts) {
+    if (!options.force && updated >= maxUpdates) break;
     const fetchedAt = latest.get(post.id);
+    const ageHours = post.posted_at ? Math.max(0, (now - new Date(post.posted_at).getTime()) / 3_600_000) : 0;
+    const refreshHours = ageHours < 24 ? 3 : ageHours < 24 * 7 ? 12 : ageHours < 24 * 30 ? 24 : 24 * 7;
+    const freshAfter = now - refreshHours * 60 * 60 * 1000;
     if (!options.force && fetchedAt && new Date(fetchedAt).getTime() >= freshAfter) {
       skipped += 1;
       continue;
@@ -50,8 +54,7 @@ export async function syncPublishedPostMetrics(options: {
     try {
       let token = pageTokens.get(post.page_id!);
       if (!token) {
-        const page = await fetchPage(post.page_id!);
-        token = page.access_token;
+        token = await getPageAccessToken(post.page_id!);
         pageTokens.set(post.page_id!, token);
       }
       const metric = await fetchPostEngagement(post.facebook_post_id!, token);

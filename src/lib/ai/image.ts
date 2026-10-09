@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { getAiCredentials } from "@/lib/ai/credentials";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { ImageSource, ImageSourcePref } from "@/lib/types";
+import { optimizePostImage } from "@/lib/images/optimize";
 
 const STORAGE_BUCKET = "post-images";
 
@@ -120,14 +121,27 @@ export async function uploadImageBlob(
 ): Promise<{ url: string; source: Exclude<ImageSource, "template"> }> {
   const db = supabaseAdmin();
   const path = `${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
-  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const optimized = await optimizePostImage(new Uint8Array(await blob.arrayBuffer()));
 
-  const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, bytes, {
-    contentType: blob.type || "image/jpeg",
+  const { error } = await db.storage.from(STORAGE_BUCKET).upload(path, optimized.bytes, {
+    contentType: "image/jpeg",
     upsert: false,
   });
   if (error) throw new Error(`Falha ao enviar para o armazenamento: ${error.message}`);
 
   const { data } = db.storage.from(STORAGE_BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, source };
+}
+
+/** Best-effort cleanup for temporary automatic-generation assets. */
+export async function deleteStoredImage(url: string): Promise<void> {
+  try {
+    const parsed = new URL(url);
+    const marker = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+    const index = parsed.pathname.indexOf(marker);
+    if (index < 0) return;
+    const objectPath = decodeURIComponent(parsed.pathname.slice(index + marker.length));
+    if (!objectPath) return;
+    await supabaseAdmin().storage.from(STORAGE_BUCKET).remove([objectPath]);
+  } catch {}
 }

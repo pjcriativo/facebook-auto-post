@@ -51,6 +51,25 @@ export interface FacebookPage {
   access_token: string;
 }
 
+async function storePageCredential(pageId: string, accessToken: string): Promise<void> {
+  const { error } = await supabaseAdmin().from("facebook_page_credentials").upsert({
+    page_id: pageId,
+    access_token: accessToken,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "page_id" });
+  if (error) throw new Error(`Não foi possível guardar o acesso da Página: ${error.message}`);
+}
+
+export async function getPageAccessToken(pageId: string): Promise<string> {
+  const { data } = await supabaseAdmin()
+    .from("facebook_page_credentials")
+    .select("access_token")
+    .eq("page_id", pageId)
+    .maybeSingle();
+  if (data?.access_token) return data.access_token;
+  return (await fetchPage(pageId)).access_token;
+}
+
 function pageReference(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) throw new Error("Informe a URL, o nome de usuário ou o ID da Página.");
@@ -93,6 +112,7 @@ export async function fetchPage(reference: string): Promise<FacebookPage> {
   if (!data.id || !data.name || !data.access_token) {
     throw new Error("A conta conectada não tem permissão para publicar nessa Página.");
   }
+  await storePageCredential(data.id, data.access_token);
   return {
     id: data.id,
     name: data.name,
@@ -137,6 +157,18 @@ export async function fetchPages(): Promise<FacebookPage[]> {
     }
     after = data.paging?.cursors?.after && data.paging?.next ? data.paging.cursors.after : undefined;
   } while (after);
+
+  if (pages.length > 0) {
+    const { error } = await supabaseAdmin().from("facebook_page_credentials").upsert(
+      pages.map((page) => ({
+        page_id: page.id,
+        access_token: page.access_token,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "page_id" }
+    );
+    if (error) throw new Error(`Não foi possível guardar os acessos das Páginas: ${error.message}`);
+  }
 
   return pages;
 }

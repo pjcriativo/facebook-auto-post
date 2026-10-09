@@ -15,7 +15,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
-import type { Topic, TopicSource } from "@/lib/types";
+import type { PageCache, Topic, TopicSource } from "@/lib/types";
 
 const SOURCES: {
   value: TopicSource;
@@ -66,6 +66,8 @@ function relativeTime(iso: string): string {
 }
 
 export default function TopicsPage() {
+  const [pages, setPages] = useState<PageCache[]>([]);
+  const [pageId, setPageId] = useState<string>("");
   const [topics, setTopics] = useState<Topic[]>([]);
   const [source, setSource] = useState<TopicSource>("mine");
   const [nextId, setNextId] = useState<string | null>(null);
@@ -83,7 +85,8 @@ export default function TopicsPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/topics");
+      const query = pageId ? `?pageId=${encodeURIComponent(pageId)}` : "";
+      const res = await fetch(`/api/topics${query}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Não foi possível carregar seus temas.");
       setTopics(data.topics ?? []);
@@ -95,6 +98,19 @@ export default function TopicsPage() {
     } finally {
       setLoading(false);
     }
+  }, [pageId]);
+
+  useEffect(() => {
+    fetch("/api/facebook/pages")
+      .then((res) => res.json())
+      .then((data) => {
+        const available = (data.pages ?? []) as PageCache[];
+        setPages(available);
+        if (data.defaultPageId && available.some((page) => page.page_id === data.defaultPageId)) {
+          setPageId(data.defaultPageId);
+        }
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -116,7 +132,7 @@ export default function TopicsPage() {
       const res = await fetch("/api/topics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ texts: pendingLines }),
+        body: JSON.stringify({ texts: pendingLines, pageId: pageId || null }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Não foi possível adicionar esses temas.");
@@ -176,7 +192,7 @@ export default function TopicsPage() {
     setSavingSource(true);
     setError(null);
     try {
-      const res = await fetch("/api/settings", {
+      const res = await fetch(pageId ? `/api/pages/${pageId}/automation` : "/api/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic_source: value }),
@@ -233,6 +249,27 @@ export default function TopicsPage() {
           {error}
         </div>
       )}
+
+      <Card>
+        <label htmlFor="topic-page" className="font-heading font-bold text-foreground">
+          Página desta biblioteca
+        </label>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Cada Página possui seus próprios temas. A biblioteca geral funciona como reserva para todas elas.
+        </p>
+        <select
+          id="topic-page"
+          value={pageId}
+          onChange={(event) => {
+            setLoading(true);
+            setPageId(event.target.value);
+          }}
+          className="mt-3 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm text-foreground outline-none focus:border-primary"
+        >
+          <option value="">Biblioteca geral (reserva)</option>
+          {pages.map((page) => <option key={page.page_id} value={page.page_id}>{page.name}</option>)}
+        </select>
+      </Card>
 
       {/* Where autopilot's subjects come from */}
       <Card>

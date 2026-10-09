@@ -121,7 +121,9 @@ export async function kieChatCompletion(
   model: string,
   messages: ChatMessage[],
   generationId?: string,
-  temperature = 0.75
+  temperature = 0.75,
+  pageId?: string,
+  pageDailyCreditLimit?: number | null
 ) {
   const credentials = await getAiCredentials();
   if (!credentials.kieApiKey || !credentials.kieEnabled) {
@@ -134,6 +136,12 @@ export async function kieChatCompletion(
     usedToday >= credentials.kieDailyCreditLimit
   ) {
     throw new Error("O limite diário de créditos da Kie.ai foi atingido.");
+  }
+  if (pageId && pageDailyCreditLimit != null && pageDailyCreditLimit > 0) {
+    const pageUsedToday = await kieCreditsUsedToday(pageId);
+    if (pageUsedToday >= pageDailyCreditLimit) {
+      throw new Error("O limite diário de créditos Kie desta Página foi atingido.");
+    }
   }
 
   const selected = checkedChatModel(model);
@@ -152,6 +160,7 @@ export async function kieChatCompletion(
       status: "success",
       latencyMs: Date.now() - started,
       generationId,
+      pageId,
     });
     return content;
   } catch (error) {
@@ -163,6 +172,7 @@ export async function kieChatCompletion(
       latencyMs: Date.now() - started,
       errorMessage: error instanceof Error ? error.message : String(error),
       generationId,
+      pageId,
     });
     throw error;
   }

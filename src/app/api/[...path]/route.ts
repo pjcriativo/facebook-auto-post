@@ -83,6 +83,14 @@ import { getFacebookCredentials, isFacebookConfigured } from "@/lib/facebook/cre
 import { OAUTH_STATE_COOKIE } from "@/lib/facebook/oauth-state";
 import { publishPostNow } from "@/lib/facebook/publish";
 import { maybeRunAutopilot } from "@/lib/autopilot";
+import { runCopilotV2Preparation } from "@/lib/copilot/v2";
+import {
+  ensurePageAutomation,
+  getPageAutomation,
+  listPageAutomations,
+  listPublicationJobs,
+  updatePageAutomation,
+} from "@/lib/db/page-automation";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import type { AgentLanguage, AppSettings, PostStatus } from "@/lib/types";
 
@@ -334,6 +342,20 @@ export async function GET(req: Request, ctx: Ctx) {
       });
     }
 
+    if (route === "page-automations") {
+      const { data: pages, error } = await supabaseAdmin().from("pages_cache").select("page_id");
+      if (error) throw new Error(`Não foi possível carregar as Páginas: ${error.message}`);
+      await Promise.all((pages ?? []).map((page) => ensurePageAutomation(page.page_id)));
+      return json({
+        automations: await listPageAutomations(),
+        jobs: await listPublicationJobs(undefined, 100),
+      });
+    }
+
+    if (path.length === 3 && path[0] === "pages" && path[2] === "automation") {
+      return json({ automation: await ensurePageAutomation(path[1]) });
+    }
+
     if (route === "usage/summary") {
       const credentials = await getAiCredentials();
       let balance: number | null = null;
@@ -387,10 +409,11 @@ export async function GET(req: Request, ctx: Ctx) {
     }
 
     if (route === "topics") {
-      const settings = await getSettings();
-      const source = settings.topic_source ?? "mine";
+      const pageId = url.searchParams.get("pageId");
+      const settings = pageId ? await getPageAutomation(pageId) : await getSettings();
+      const source = settings?.topic_source ?? "mine";
       try {
-        const [topics, next] = await Promise.all([listTopics(), nextTopic()]);
+        const [topics, next] = await Promise.all([listTopics(pageId), nextTopic(pageId)]);
         return json({ ready: true, source, topics, nextId: next?.id ?? null });
       } catch (err) {
         // An install that predates topics: report it so the screen can say
@@ -495,6 +518,7 @@ const AddFacebookPageBody = z.object({ reference: z.string().trim().min(1).max(3
 // types, and bounds a single request.
 const AddTopicsBody = z.object({
   texts: z.array(z.string().max(MAX_TOPIC_LENGTH * 2)).min(1).max(500),
+  pageId: z.string().min(1).nullable().optional(),
 });
 
 const CredentialsBody = z.object({
@@ -888,7 +912,7 @@ export async function POST(req: Request, ctx: Ctx) {
       const parsed = AddTopicsBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Envie pelo menos um tema." }, 400);
       try {
-        return json(await addTopics(parsed.data.texts));
+        return json(await addTopics(parsed.data.texts, parsed.data.pageId));
       } catch (err) {
         if (err instanceof TopicsTableMissingError) return json({ error: err.message }, 409);
         throw err;
@@ -985,6 +1009,7 @@ export async function POST(req: Request, ctx: Ctx) {
         facebook_user_name: null,
         default_page_token: null,
       });
+      await supabaseAdmin().from("facebook_page_credentials").delete().neq("page_id", "");
       return json({ ok: true });
     }
 
@@ -1006,6 +1031,23 @@ const SettingsBody = z.object({
   strategy_optimization_enabled: z.boolean().optional(),
   strategy_min_samples: z.number().int().min(1).max(50).optional(),
   strategy_exploration_rate: z.number().min(0).max(0.5).optional(),
+});
+
+const PageAutomationBody = z.object({
+  enabled: z.boolean().optional(),
+  target_posts_per_day: z.number().int().min(1).max(25).optional(),
+  timezone: z.string().min(1).max(64).optional(),
+  active_start_minute: z.number().int().min(0).max(1439).optional(),
+  active_end_minute: z.number().int().min(0).max(1439).optional(),
+  schedule_jitter_minutes: z.number().int().min(0).max(15).optional(),
+  topic_source: z.enum(["mine", "trending", "mixed"]).optional(),
+  image_source: z.enum(["ai", "stock", "mixed", "template"]).optional(),
+  default_template_id: z.string().uuid().nullable().optional(),
+  daily_credit_limit: z.number().min(0).max(1_000_000).nullable().optional(),
+  retention_days: z.number().int().min(1).max(90).optional(),
+  strategy_enabled: z.boolean().optional(),
+  strategy_min_samples: z.number().int().min(3).max(100).optional(),
+  exploration_rate: z.number().min(0).max(0.5).optional(),
 });
 
 const ProfileBody = z.object({
@@ -1155,6 +1197,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const parsed = UpdateTopicBody.safeParse(await req.json().catch(() => null));
       if (!parsed.success) return json({ error: "Atualização de tema inválida." }, 400);
       return json({ topic: await updateTopic(path[1], parsed.data) });
+    }
+
+    if (path.length === 3 && path[0] === "pages" && path[2] === "automation") {
+      const parsed = PageAutomationBody.safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return json({ error: "Configuração de automação inválida." }, 400);
+      const pageId = path[1];
+      const { data: page } = await supabaseAdmin().from("pages_cache").select("page_id").eq("page_id", pageId).maybeSingle();
+      if (!page) return json({ error: "Página não encontrada." }, 404);
+      if (parsed.data.enabled === true && !(await getPageAgent(pageId))) {
+        return json({ error: "Vincule um agente responsável antes de ativar o Copiloto desta Página." }, 409);
+      }
+      return json({ automation: await updatePageAutomation(pageId, parsed.data) });
     }
 
     if (path.length === 2 && path[0] === "templates") {
@@ -1431,12 +1485,15 @@ async function runCron(req: Request, url: URL) {
     }
   }
 
+  // Plan and prepare upcoming V2 jobs before checking the ordinary queue so a
+  // due post can still be published in the same worker invocation.
+  const copilotV2 = await runCopilotV2Preparation();
   const due = await listDuePosts(new Date().toISOString());
   const queueResults = [];
   for (const post of due) {
     // A cron delivery may be duplicated. Reuse the atomic run ledger to make
     // each scheduled post publish at most once across concurrent invocations.
-    const slotKey = `queue:${post.id}`;
+    const slotKey = `queue:${post.id}:${post.scheduled_at ?? "now"}`;
     const db = supabaseAdmin();
     const { error: claimError } = await db.from("autopilot_runs").insert({ slot_key: slotKey });
     if (claimError?.code === "23505") continue;
@@ -1461,10 +1518,12 @@ async function runCron(req: Request, url: URL) {
     }
   }
 
-  const autopilot = await maybeRunAutopilot();
+  const autopilot = copilotV2.planned.pages > 0
+    ? { ran: false as const, reason: "copilot_v2" }
+    : await maybeRunAutopilot();
   let metrics: Awaited<ReturnType<typeof syncPublishedPostMetrics>> | null = null;
   try {
-    metrics = await syncPublishedPostMetrics({ limit: 20 });
+    metrics = await syncPublishedPostMetrics({ limit: 500, maxUpdates: 20 });
   } catch (error) {
     console.warn("[analytics] automatic metric sync failed:", error);
   }
@@ -1473,6 +1532,7 @@ async function runCron(req: Request, url: URL) {
     processedFromQueue: queueResults.length,
     queueResults,
     autopilot,
+    copilotV2,
     metrics,
   });
 }

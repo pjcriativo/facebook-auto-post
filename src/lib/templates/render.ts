@@ -6,6 +6,7 @@ import * as fontkit from "fontkit";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/db/settings";
 import type { ContentTemplate } from "@/lib/types";
+import { optimizePostImage } from "@/lib/images/optimize";
 
 const SIZE = 1280;
 const BUCKET = "post-images";
@@ -180,10 +181,11 @@ export async function renderTemplate(
   text: string
 ): Promise<{ url: string; source: "template" }> {
   const png = await renderTemplatePng(template, text);
-  const path = `templates/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.png`;
+  const optimized = await optimizePostImage(png);
+  const path = `templates/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.jpg`;
   const db = supabaseAdmin();
-  const { error } = await db.storage.from(BUCKET).upload(path, png, {
-    contentType: "image/png",
+  const { error } = await db.storage.from(BUCKET).upload(path, optimized.bytes, {
+    contentType: "image/jpeg",
     cacheControl: "31536000",
     upsert: false,
   });

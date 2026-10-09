@@ -401,6 +401,18 @@ begin
 end;
 $$;
 
+update content_agents
+set primary_model = 'gpt-5-6-terra',
+    fallback_model = 'gpt-5-5',
+    updated_at = now()
+where slug in (
+  'mestre-biblico',
+  'intercessor-libertacao',
+  'conselheiro-pastoral',
+  'devocional-motivacional',
+  'missionario-evangelista'
+);
+
 -- Public bucket every generated/sourced image is re-hosted into, so a post's
 -- image keeps working even if the free provider it came from goes down later.
 insert into storage.buckets (id, name, public)

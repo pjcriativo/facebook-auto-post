@@ -83,10 +83,17 @@ Regras:
 const TIMEOUT_MS = 20_000;
 
 function extractJson(text: string): unknown {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
+  let normalized = text.replace(/<\/?escape>/gi, "").trim();
+  // Some Responses models occasionally omit only the opening object and the
+  // first key while returning the remainder correctly. Recover that narrow,
+  // recognizable shape; all other malformed responses still fail closed.
+  if (!normalized.includes("{") && /^"(?:\\.|[^"\\])*"\s*,\s*"description"\s*:/.test(normalized)) {
+    normalized = `{"title":${normalized}`;
+  }
+  const start = normalized.indexOf("{");
+  const end = normalized.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) throw new Error("A resposta não contém um objeto JSON");
-  return JSON.parse(text.slice(start, end + 1));
+  return JSON.parse(normalized.slice(start, end + 1));
 }
 
 function parseContent(raw: string): GeneratedContent {
@@ -108,7 +115,7 @@ function parseContent(raw: string): GeneratedContent {
   return {
     title: o.title.trim(),
     description: o.description.trim(),
-    hashtags: (o.hashtags as string[]).map((h) => h.replace(/^#/, "").trim()).filter(Boolean),
+    hashtags: (o.hashtags as string[]).map((h) => h.replace(/^#/, "").trim()).filter(Boolean).slice(0, 5),
     artText: typeof o.artText === "string" ? o.artText.trim() : undefined,
     imageHook: typeof o.imageHook === "string" ? o.imageHook.trim().slice(0, 90) : undefined,
     imagePrompt: typeof o.imagePrompt === "string" ? o.imagePrompt.trim() : undefined,
